@@ -56,6 +56,13 @@ AdhocWifiMac::AdhocWifiMac ()
   NS_LOG_FUNCTION (this);
   //Let the lower layers know that we are acting in an IBSS
   SetTypeOfStation (ADHOC_STA);
+
+  // NI API CHANGE
+  NI_LOG_DEBUG ("Create AdhocWifiMac");
+  // create the NiWifiMacInterface object
+  m_NiWifiAdMacInterface = CreateObject <NiWifiMacInterface> (NS3_ADHOC);
+  // create callbacks from ni wifi sublayer tx interface
+  m_NiWifiAdMacInterface->SetNiApWifiRxDataEndOkCallback (MakeCallback (&AdhocWifiMac::Receive, this));
 }
 
 AdhocWifiMac::~AdhocWifiMac ()
@@ -77,12 +84,19 @@ AdhocWifiMac::SetAddress (Mac48Address address)
   RegularWifiMac::SetBssid (address);
 }
 
+// This function, which originated from the standard ns-3 AdhocWifiMac::Enqueue function, was modified to generate
+// the TX Request messages in a certain format, that is expected by the 802.11 AFW.
+// When the NIAPI is enabled, the ns-3 WifiMacHeader and ns-3 Packet are stored in the MSDU data of the TX Payload Request.
 void
 AdhocWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to)
 {
+  NI_LOG_DEBUG ("AdhocWifiMac::Enqueue: serialized packet size = " << packet->GetSerializedSize());
+
   NS_LOG_FUNCTION (this << packet << to);
   if (m_stationManager->IsBrandNew (to))
     {
+      NI_LOG_DEBUG ("AdhocWifiMac::Enqueue: m_stationManager->IsBrandNew (to) = " << to);
+
       //In ad hoc mode, we assume that every destination supports all
       //the rates we support.
       if (m_htSupported || m_vhtSupported)
@@ -112,6 +126,8 @@ AdhocWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to)
   //by the association state machine, and consulted here.
   if (m_qosSupported)
     {
+      NI_LOG_DEBUG("AdhocWifiMac::Enqueue: m_qosSupported");
+
       hdr.SetType (WIFI_MAC_QOSDATA);
       hdr.SetQosAckPolicy (WifiMacHeader::NORMAL_ACK);
       hdr.SetQosNoEosp ();
@@ -138,6 +154,8 @@ AdhocWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to)
 
   if (m_htSupported || m_vhtSupported)
     {
+      NI_LOG_DEBUG("AdhocWifiMac::Enqueue: m_htSupported = " << m_htSupported << ", m_vhtSupported = " << m_vhtSupported);
+
       hdr.SetNoOrder ();
     }
   hdr.SetAddr1 (to);
@@ -146,15 +164,25 @@ AdhocWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to)
   hdr.SetDsNotFrom ();
   hdr.SetDsNotTo ();
 
-  if (m_qosSupported)
+  if (m_NiWifiAdMacInterface->GetNiApiEnable() )
     {
-      //Sanity check that the TID is valid
-      NS_ASSERT (tid < 8);
-      m_edca[QosUtilsMapTidToAc (tid)]->Queue (packet, hdr);
+      m_NiWifiAdMacInterface->NiStartTxCtrlDataFrame(packet, hdr);
+
+      NI_LOG_DEBUG ("AdhocWifiMac::Enqueue: packet incl hdr sent to NI WiFi");
     }
   else
     {
-      m_dca->Queue (packet, hdr);
+      if (m_qosSupported)
+        {
+          //Sanity check that the TID is valid
+          NS_ASSERT (tid < 8);
+          m_edca[QosUtilsMapTidToAc (tid)]->Queue (packet, hdr);
+        }
+
+      else
+        {
+          m_dca->Queue (packet, hdr);
+        }
     }
 }
 
@@ -177,17 +205,26 @@ AdhocWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
   NS_ASSERT (!hdr->IsCtl ());
   Mac48Address from = hdr->GetAddr2 ();
   Mac48Address to = hdr->GetAddr1 ();
+
+  NI_LOG_DEBUG ("AdhocWifiMac::Receive: if control frame: packet = " << packet << ", header = " << *hdr << ", source address = " << from);
+
   if (m_stationManager->IsBrandNew (from))
     {
+      NI_LOG_DEBUG ("AdhocWifiMac::Receive: checking StationManager");
+
       //In ad hoc mode, we assume that every destination supports all
       //the rates we support.
       if (m_htSupported || m_vhtSupported)
         {
+          NI_LOG_DEBUG ("AdhocWifiMac::Receive: m_htSupported || m_vhtSupported");
+
           m_stationManager->AddAllSupportedMcs (from);
           m_stationManager->AddStationHtCapabilities (from, GetHtCapabilities());
         }
       if (m_vhtSupported)
         {
+          NI_LOG_DEBUG ("AdhocWifiMac::Receive: m_vhtSupported");
+
           m_stationManager->AddStationVhtCapabilities (from, GetVhtCapabilities());
         }
       m_stationManager->AddAllSupportedModes (from);
@@ -197,11 +234,15 @@ AdhocWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
     {
       if (hdr->IsQosData () && hdr->IsQosAmsdu ())
         {
+          NI_LOG_DEBUG ("AdhocWifiMac::Receive: QoS Data - packet " << packet << " from " << from << " with header "<< hdr);
+
           NS_LOG_DEBUG ("Received A-MSDU from" << from);
           DeaggregateAmsduAndForward (packet, hdr);
         }
       else
         {
+          NI_LOG_DEBUG ("AdhocWifiMac::Receive: Non QoS Data - packet " << packet << " forward up from " << from << " to " << to);
+
           ForwardUp (packet, from, to);
         }
       return;

@@ -37,6 +37,7 @@
 #include "ns3/lte-mac-sap.h"
 #include <ns3/lte-common.h>
 
+#include "ns3/ni-logging.h"
 
 namespace ns3 {
 
@@ -1002,8 +1003,32 @@ LteEnbMac::DoSchedDlConfigInd (FfMacSchedSapUser::SchedDlConfigIndParameters ind
                   NS_ASSERT_MSG (rntiIt != m_rlcAttached.end (), "could not find RNTI" << rnti);
                   std::map<uint8_t, LteMacSapUser*>::iterator lcidIt = rntiIt->second.find (lcid);
                   NS_ASSERT_MSG (lcidIt != rntiIt->second.end (), "could not find LCID" << lcid);
-                  NS_LOG_DEBUG (this << " rnti= " << rnti << " lcid= " << (uint32_t) lcid << " layer= " << k);
-                  (*lcidIt).second->NotifyTxOpportunity (ind.m_buildDataList.at (i).m_rlcPduList.at (j).at (k).m_size, k, ind.m_buildDataList.at (i).m_dci.m_harqProcess);
+                  NS_LOG_DEBUG (this << " rnti= " << rnti << " lcid= " << (uint32_t) lcid << " layer= " << k << " Size=" << ind.m_buildDataList.at (i).m_rlcPduList.at (j).at (k).m_size);
+
+                  // NI API CHANGE - subtract size of control elements including in NI API payload
+                  // i=user cnt /rnti
+                  // j=lcid cnt
+                  // k=layer cnt
+                  uint32_t macPduSize = ind.m_buildDataList.at (i).m_rlcPduList.at (j).at (k).m_size;
+                  uint32_t rlcPduSize = 0;
+
+                  if (m_enbPhySapProvider->GetNiApiEnable ())
+                    // adapt TB size for control channel overhead (150 bytes)
+                    if (macPduSize <= 150) {
+                        NI_LOG_FATAL("eNB MAC DL - PDU Size smaller than 150 Byte");
+                    } else {
+                        rlcPduSize =  macPduSize-150;
+                    }
+                  else{
+                      rlcPduSize =  macPduSize;
+                  }
+                  NI_LOG_DEBUG ("eNB MAC DL - schedule data for rnti= " << rnti <<
+                                " lcid= " << (uint32_t) lcid << " layer= " << k <<
+                                " with MAC PDU Size=" << macPduSize << " (" << (rlcPduSize) <<  ")" <<
+                                " , MCS=" << std::to_string(ind.m_buildDataList.at (i).m_dci.m_mcs.at (k)) <<
+                                " , PRB=" << std::bitset<25>(ind.m_buildDataList.at (i).m_dci.m_rbBitmap));
+
+                  (*lcidIt).second->NotifyTxOpportunity (rlcPduSize, k, ind.m_buildDataList.at (i).m_dci.m_harqProcess);
                 }
               else
                 {
@@ -1083,6 +1108,8 @@ LteEnbMac::DoSchedDlConfigInd (FfMacSchedSapUser::SchedDlConfigIndParameters ind
       rar.rarPayload = ind.m_buildRarList.at (i);
       rarMsg->AddRar (rar);
       NS_LOG_INFO (this << " Send RAR message to RNTI " << ind.m_buildRarList.at (i).m_rnti << " rapId " << itRapId->second);
+
+      NI_LOG_DEBUG("LteEnbMac::DoSchedDlConfigInd: Send RAR message to RNTI " << ind.m_buildRarList.at (i).m_rnti << " rapId " << itRapId->second << " (raRnti:" << raRnti << ", subframeNo:" << m_subframeNo << ")");
     }
   if (ind.m_buildRarList.size () > 0)
     {

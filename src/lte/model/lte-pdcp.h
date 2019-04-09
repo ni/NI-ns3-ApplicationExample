@@ -161,6 +161,12 @@ protected:
    * The parameters are RNTI, LCID, bytes delivered and delivery delay in nanoseconds. 
    */
   TracedCallback<uint16_t, uint8_t, uint32_t, uint64_t> m_rxPdu;
+  
+  TracedCallback<Ptr<const Packet> >m_pdcptxtrace ;
+
+  uint32_t pdcp_decisionlwa;
+  uint32_t pdcp_decisionlwip;
+  uint32_t m_packetCounter=0;
 
 private:
   /**

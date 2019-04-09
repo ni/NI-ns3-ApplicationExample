@@ -109,10 +109,16 @@ StaWifiMac::StaWifiMac ()
 {
   NS_LOG_FUNCTION (this);
 
-  //Let the lower layers know that we are acting as a non-AP STA in
-  //an infrastructure BSS.
-  SetTypeOfStation (STA);
-}
+    //Let the lower layers know that we are acting as a non-AP STA in
+    //an infrastructure BSS.
+    SetTypeOfStation (STA);
+    // NI API CHANGE
+    NI_LOG_DEBUG ("Create StaWifiMac");
+    // create the NiWifiMacInterface object
+    m_NiWifiMAcInterface = CreateObject <NiWifiMacInterface> (NS3_STA);
+    // create callbacks from ni wifi sublayer tx interface
+    m_NiWifiMAcInterface->SetNiApWifiRxDataEndOkCallback (MakeCallback (&StaWifiMac::Receive, this));
+  }
 
 StaWifiMac::~StaWifiMac ()
 {
@@ -170,6 +176,8 @@ bool StaWifiMac::GetActiveProbing (void) const
 void
 StaWifiMac::SendProbeRequest (void)
 {
+  NI_LOG_DEBUG ("StaWifiMac::SendProbeRequest");
+
   NS_LOG_FUNCTION (this);
   WifiMacHeader hdr;
   hdr.SetProbeReq ();
@@ -186,18 +194,33 @@ StaWifiMac::SendProbeRequest (void)
     {
       probe.SetHtCapabilities (GetHtCapabilities ());
       hdr.SetNoOrder ();
+
+      NI_LOG_DEBUG ("StaWifiMac::SendProbeRequest: probe is HT capable"<< hdr<< packet);
     }
   if (m_vhtSupported)
     {
       probe.SetVhtCapabilities (GetVhtCapabilities ());
+
+     NI_LOG_DEBUG ("StaWifiMac::SendProbeRequest: probe is VHT capable"<< hdr<< packet);
     }
   packet->AddHeader (probe);
 
-  //The standard is not clear on the correct queue for management
-  //frames if we are a QoS AP. The approach taken here is to always
-  //use the DCF for these regardless of whether we have a QoS
-  //association or not.
-  m_dca->Queue (packet, hdr);
+  // NI API CHANGE
+  if (m_NiWifiMAcInterface->GetNiApiEnable())
+    {
+      //std::cout << "STA: Send a probe request!" << std::endl;
+      m_NiWifiMAcInterface->NiStartTxCtrlDataFrame(packet, hdr);
+
+      NI_LOG_DEBUG ("WIFI.STA: Send an probe request");
+    }
+  else
+    {
+      //The standard is not clear on the correct queue for management
+      //frames if we are a QoS AP. The approach taken here is to always
+      //use the DCF for these regardless of whether we have a QoS
+      //association or not.
+      m_dca->Queue (packet, hdr);
+    }
 
   if (m_probeRequestEvent.IsRunning ())
     {
@@ -210,6 +233,8 @@ StaWifiMac::SendProbeRequest (void)
 void
 StaWifiMac::SendAssociationRequest (void)
 {
+  NI_LOG_DEBUG ("StaWifiMac::SendAssociationRequest: m_state = " << m_state);
+
   NS_LOG_FUNCTION (this << GetBssid ());
   WifiMacHeader hdr;
   hdr.SetAssocReq ();
@@ -227,21 +252,38 @@ StaWifiMac::SendAssociationRequest (void)
     {
       assoc.SetHtCapabilities (GetHtCapabilities ());
       hdr.SetNoOrder ();
+
+      NI_LOG_DEBUG ("StaWifiMac::SendAssociationRequest: association request is HT capable");
     }
   if (m_vhtSupported)
     {
       assoc.SetVhtCapabilities (GetVhtCapabilities ());
+
+      NI_LOG_DEBUG ("StaWifiMac::SendAssociationRequest: association request is VHT capable");
     }
   packet->AddHeader (assoc);
 
-  //The standard is not clear on the correct queue for management
-  //frames if we are a QoS AP. The approach taken here is to always
-  //use the DCF for these regardless of whether we have a QoS
-  //association or not.
-  m_dca->Queue (packet, hdr);
+  // NI API CHANGE
+  if (m_NiWifiMAcInterface->GetNiApiEnable())
+    {
+      m_NiWifiMAcInterface->NiStartTxCtrlDataFrame(packet, hdr);
+
+      NI_LOG_CONSOLE_DEBUG ("WIFI.STA: Send an association request!");
+    }
+
+  else
+    {
+      //The standard is not clear on the correct queue for management
+      //frames if we are a QoS AP. The approach taken here is to always
+      //use the DCF for these regardless of whether we have a QoS
+      //association or not.
+      m_dca->Queue (packet, hdr);
+    }
 
   if (m_assocRequestEvent.IsRunning ())
     {
+      NI_LOG_DEBUG ("StaWifiMac::SendAssociationRequest: m_assocRequestEvent.IsRunning () = " << m_assocRequestEvent.IsRunning ());
+
       m_assocRequestEvent.Cancel ();
     }
   m_assocRequestEvent = Simulator::Schedule (m_assocRequestTimeout,
@@ -251,6 +293,8 @@ StaWifiMac::SendAssociationRequest (void)
 void
 StaWifiMac::TryToEnsureAssociated (void)
 {
+  NI_LOG_DEBUG ("StaWifiMac::TryToEnsureAssociated: m_state = " << m_state);
+
   NS_LOG_FUNCTION (this);
   switch (m_state)
     {
@@ -295,6 +339,8 @@ StaWifiMac::TryToEnsureAssociated (void)
 void
 StaWifiMac::AssocRequestTimeout (void)
 {
+  NI_LOG_DEBUG ("StaWifiMac::AssocRequestTimeout");
+
   NS_LOG_FUNCTION (this);
   SetState (WAIT_ASSOC_RESP);
   SendAssociationRequest ();
@@ -303,6 +349,8 @@ StaWifiMac::AssocRequestTimeout (void)
 void
 StaWifiMac::ProbeRequestTimeout (void)
 {
+  NI_LOG_DEBUG ("StaWifiMac::ProbeRequestTimeout");
+
   NS_LOG_FUNCTION (this);
   SetState (WAIT_PROBE_RESP);
   SendProbeRequest ();
@@ -311,6 +359,9 @@ StaWifiMac::ProbeRequestTimeout (void)
 void
 StaWifiMac::MissedBeacons (void)
 {
+  NI_LOG_DEBUG ("StaWifiMac::MissedBeacons: m_beaconWatchdogEnd = " << m_beaconWatchdogEnd
+                    << ", Simulator::Now ()) = " << Simulator::Now ());
+
   NS_LOG_FUNCTION (this);
   if (m_beaconWatchdogEnd > Simulator::Now ())
     {
@@ -330,6 +381,8 @@ StaWifiMac::MissedBeacons (void)
 void
 StaWifiMac::RestartBeaconWatchdog (Time delay)
 {
+  NI_LOG_DEBUG ("StaWifiMac::RestartBeaconWatchdog");
+
   NS_LOG_FUNCTION (this << delay);
   m_beaconWatchdogEnd = std::max (Simulator::Now () + delay, m_beaconWatchdogEnd);
   if (Simulator::GetDelayLeft (m_beaconWatchdog) < delay
@@ -355,9 +408,13 @@ StaWifiMac::IsWaitAssocResp (void) const
 void
 StaWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to)
 {
+  NI_LOG_DEBUG("StaWifiMac::Enqueue");
+
   NS_LOG_FUNCTION (this << packet << to);
   if (!IsAssociated ())
     {
+      NI_LOG_DEBUG("StaWifiMac::Enqueue: not associated, drop packet");
+
       NotifyTxDrop (packet);
       TryToEnsureAssociated ();
       return;
@@ -410,70 +467,116 @@ StaWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to)
   hdr.SetDsNotFrom ();
   hdr.SetDsTo ();
 
+  NI_LOG_DEBUG ("StaWifiMac::Enqueue: to = " << to << ", from = " << m_low->GetAddress ());
+
   if (m_qosSupported)
     {
-      //Sanity check that the TID is valid
-      NS_ASSERT (tid < 8);
-      m_edca[QosUtilsMapTidToAc (tid)]->Queue (packet, hdr);
+      // NI API CHANGE
+      if (m_NiWifiMAcInterface->GetNiApiEnable())
+        {
+          //std::cout << "STA: Send data packet!" << std::endl;
+          m_NiWifiMAcInterface->NiStartTxCtrlDataFrame(packet, hdr);
+
+          NI_LOG_DEBUG ("StaWifiMac::Enqueue: packet incl hdr sent to NI WiFi");
+        }
+      else
+        {
+          //Sanity check that the TID is valid
+          NS_ASSERT (tid < 8);
+          m_edca[QosUtilsMapTidToAc (tid)]->Queue (packet, hdr);
+        }
     }
   else
     {
-      m_dca->Queue (packet, hdr);
+      // NI API CHANGE
+      if (m_NiWifiMAcInterface->GetNiApiEnable())
+        {
+          //std::cout << "STA: Send NQoS data packet!" << std::endl;
+          m_NiWifiMAcInterface->NiStartTxCtrlDataFrame(packet, hdr);
+
+          NI_LOG_DEBUG ("StaWifiMac::Enqueue: packet incl sent to NI WiFi");
+        }
+      else
+        {
+          m_dca->Queue (packet, hdr);
+        }
     }
 }
 
 void
 StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
 {
+  NI_LOG_DEBUG ("StaWifiMac::Receive: already associated: " << IsAssociated () << ", m_state = " << m_state);
+
   NS_LOG_FUNCTION (this << packet << hdr);
   NS_ASSERT (!hdr->IsCtl ());
   if (hdr->GetAddr3 () == GetAddress ())
     {
+      NI_LOG_DEBUG ("StaWifiMac::Receive: packet by myself");
+
       NS_LOG_LOGIC ("packet sent by us.");
       return;
     }
   else if (hdr->GetAddr1 () != GetAddress ()
            && !hdr->GetAddr1 ().IsGroup ())
     {
+      NI_LOG_DEBUG ("StaWifiMac::Receive: packet not for me (STA)");
+
       NS_LOG_LOGIC ("packet is not for us");
       NotifyRxDrop (packet);
       return;
     }
   else if (hdr->IsData ())
     {
+      NI_LOG_DEBUG ("StaWifiMac::Receive: received data frame");
+
       if (!IsAssociated ())
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: received data frame while not associated: ignore");
+
           NS_LOG_LOGIC ("Received data frame while not associated: ignore");
           NotifyRxDrop (packet);
           return;
         }
       if (!(hdr->IsFromDs () && !hdr->IsToDs ()))
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: received data frame not from the DS: ignore");
+
           NS_LOG_LOGIC ("Received data frame not from the DS: ignore");
           NotifyRxDrop (packet);
           return;
         }
       if (hdr->GetAddr2 () != GetBssid ())
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive-: received data frame not from the BSS we are associated with: ignore");
+
           NS_LOG_LOGIC ("Received data frame not from the BSS we are associated with: ignore");
           NotifyRxDrop (packet);
           return;
         }
       if (hdr->IsQosData ())
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: received data frame with QoS");
+
           if (hdr->IsQosAmsdu ())
             {
+              NI_LOG_DEBUG ("StaWifiMac::Receive: received data frame is QosAmsdu, deaggregate AMSDU and forward up");
+
               NS_ASSERT (hdr->GetAddr3 () == GetBssid ());
               DeaggregateAmsduAndForward (packet, hdr);
               packet = 0;
             }
           else
             {
+              NI_LOG_DEBUG ("StaWifiMac::Receive: received data frame is not QosAmsdu, just forward up");
+
               ForwardUp (packet, hdr->GetAddr3 (), hdr->GetAddr1 ());
             }
         }
       else
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: received data frame is not Qos data, just forward up");
+
           ForwardUp (packet, hdr->GetAddr3 (), hdr->GetAddr1 ());
         }
       return;
@@ -481,12 +584,16 @@ StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
   else if (hdr->IsProbeReq ()
            || hdr->IsAssocReq ())
     {
+      NI_LOG_DEBUG ("StaWifiMac::Receive: probe packet received");
+
       //This is a frame aimed at an AP, so we can safely ignore it.
       NotifyRxDrop (packet);
       return;
     }
   else if (hdr->IsBeacon ())
     {
+      NI_LOG_DEBUG ("StaWifiMac::Receive: beacon received");;
+
       MgtBeaconHeader beacon;
       packet->RemoveHeader (beacon);
       CapabilityInformation capabilities = beacon.GetCapabilities ();
@@ -494,6 +601,8 @@ StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
       if (GetSsid ().IsBroadcast ()
           || beacon.GetSsid ().IsEqual (GetSsid ()))
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: beacon is for our SSID");
+
           NS_LOG_LOGIC ("Beacon is for our SSID");
           goodBeacon = true;
         }
@@ -510,16 +619,23 @@ StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
         }
       if (m_phy->GetNBssMembershipSelectors () > 0 && bssMembershipSelectorMatch == false)
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: beacon is not matched to our BSS membership selector");
+
           NS_LOG_LOGIC ("No match for BSS membership selector");
           goodBeacon = false;
         }
       if ((IsWaitAssocResp () || IsAssociated ()) && hdr->GetAddr3 () != GetBssid ())
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: beacon is not for us as state is WaitAssocresp");
+
           NS_LOG_LOGIC ("Beacon is not for us");
           goodBeacon = false;
         }
       if (goodBeacon)
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: beacon.GetBeaconIntervalUs () = " << beacon.GetBeaconIntervalUs ()
+                        << ", m_maxMissedBeacons = " << m_maxMissedBeacons);
+
           Time delay = MicroSeconds (beacon.GetBeaconIntervalUs () * m_maxMissedBeacons);
           RestartBeaconWatchdog (delay);
           SetBssid (hdr->GetAddr3 ());
@@ -561,6 +677,8 @@ StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
         }
       if (goodBeacon && m_state == BEACON_MISSED)
         {
+          NI_LOG_DEBUG ("StaWifiMac::Receive: goodBeacon && m_state == BEACON_MISSED, SendAssociationRequest");
+
           SetState (WAIT_ASSOC_RESP);
           SendAssociationRequest ();
         }
@@ -568,6 +686,8 @@ StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
     }
   else if (hdr->IsProbeResp ())
     {
+      NI_LOG_DEBUG ("StaWifiMac::Receive: hdr->IsProbeResp ()");
+
       if (m_state == WAIT_PROBE_RESP)
         {
           MgtProbeResponseHeader probeResp;
@@ -653,16 +773,22 @@ StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
     }
   else if (hdr->IsAssocResp ())
     {
+      NI_LOG_CONSOLE_DEBUG ("WIFI.STA: Received an association response!");
+
       if (m_state == WAIT_ASSOC_RESP)
         {
           MgtAssocResponseHeader assocResp;
           packet->RemoveHeader (assocResp);
           if (m_assocRequestEvent.IsRunning ())
             {
+              NI_LOG_DEBUG ("StaWifiMac::Receive: m_assocRequestEvent.IsRunning () = " << m_assocRequestEvent.IsRunning ());
+
               m_assocRequestEvent.Cancel ();
             }
           if (assocResp.GetStatusCode ().IsSuccess ())
             {
+              NI_LOG_DEBUG ("StaWifiMac::Receive: associated");
+
               SetState (ASSOCIATED);
               NS_LOG_DEBUG ("assoc completed");
               CapabilityInformation capabilities = assocResp.GetCapabilities ();
@@ -772,6 +898,8 @@ StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
             }
           else
             {
+              NI_LOG_DEBUG ("StaWifiMac::Receive: association refused");
+
               NS_LOG_DEBUG ("assoc refused");
               SetState (REFUSED);
             }
@@ -803,6 +931,8 @@ StaWifiMac::GetSupportedRates (void) const
       uint64_t modeDataRate = mode.GetDataRate (m_phy->GetChannelWidth (), false, nss);
       NS_LOG_DEBUG ("Adding supported rate of " << modeDataRate);
       rates.AddSupportedRate (modeDataRate);
+
+      NI_LOG_DEBUG ("StaWifiMac::GetSupportedRates: adding supported rate of " << modeDataRate);
     }
   return rates;
 }
@@ -819,6 +949,8 @@ StaWifiMac::GetCapabilities (void) const
 void
 StaWifiMac::SetState (MacState value)
 {
+  NI_LOG_DEBUG ("StaWifiMac::SetState: m_state = " << m_state << ", value = " << value);
+
   if (value == ASSOCIATED
       && m_state != ASSOCIATED)
     {

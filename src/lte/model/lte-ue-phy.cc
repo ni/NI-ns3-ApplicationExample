@@ -42,6 +42,8 @@
 #include <ns3/boolean.h>
 #include <ns3/lte-ue-power-control.h>
 
+#include "ns3/ni-logging.h"
+
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("LteUePhy");
@@ -166,6 +168,15 @@ LteUePhy::LteUePhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy)
   Simulator::Schedule (m_ueMeasurementsFilterPeriod, &LteUePhy::ReportUeMeasurements, this);
 
   DoReset ();
+
+  // NI API CHANGE: create NiLtePhyInterface object as UE
+  m_niLtePhyModule = CreateObject <NiLtePhyInterface> (NS3_UE);
+  // create callbacks from ni phy interface
+  m_niLtePhyModule->SetNiPhyRxDataEndOkCallback (MakeCallback (&LteUePhy::PhyPduReceived, this));
+  m_niLtePhyModule->SetNiPhyRxCtrlEndOkCallback (MakeCallback (&LteUePhy::ReceiveLteControlMessageList, this));
+  m_niLtePhyModule->SetNiPhyRxCqiReportCallback (MakeCallback (&LteUePhy::GenerateCtrlCqiReport, this));
+  m_niLtePhyModule->SetNiPhySpectrumModelCallback (MakeCallback (&LteUePhy::GetDlSpectrumPhy, this));
+
 }
 
 
@@ -420,6 +431,8 @@ void
 LteUePhy::PhyPduReceived (Ptr<Packet> p)
 {
   m_uePhySapUser->ReceivePhyPdu (p);
+
+  NI_LOG_DEBUG("LteUePhy::PhyPduReceived: ");
 }
 
 void
@@ -472,6 +485,7 @@ void
 LteUePhy::GenerateCtrlCqiReport (const SpectrumValue& sinr)
 {
   NS_LOG_FUNCTION (this);
+  NI_LOG_DEBUG("LteUePhy::GenerateCtrlCqiReport");
   
   GenerateCqiRsrpRsrq (sinr);
 }
@@ -483,6 +497,8 @@ LteUePhy::GenerateCqiRsrpRsrq (const SpectrumValue& sinr)
 
   NS_ASSERT (m_state != CELL_SEARCH);
   NS_ASSERT (m_cellId > 0);
+
+  NI_LOG_DEBUG("LteUePhy::GenerateCqiRsrpRsrq: m_dlConfigured=" << m_dlConfigured << " / m_ulConfigured=" << m_ulConfigured << " / m_rnti=" << m_rnti);
 
   if (m_dlConfigured && m_ulConfigured && (m_rnti > 0))
     {
@@ -609,6 +625,7 @@ void
 LteUePhy::GenerateMixedCqiReport (const SpectrumValue& sinr)
 {
   NS_LOG_FUNCTION (this);
+  NI_LOG_DEBUG("LteUePhy::GenerateMixedCqiReport");
 
   NS_ASSERT (m_state != CELL_SEARCH);
   NS_ASSERT (m_cellId > 0);
@@ -748,6 +765,9 @@ LteUePhy::CreateDlCqiFeedbackMessage (const SpectrumValue& sinr)
       //NS_LOG_DEBUG (this << " Generate P10 CQI feedback " << (uint16_t) cqiSum / activeSubChannels);
       dlcqi.m_wbPmi = 0; // not yet used
       // dl.cqi.m_sbMeasResult others CQI report modes: not yet implemented
+
+      NI_LOG_DEBUG("wbCQI Report Generation: P10 nLayer=" << nLayer << " / nbSubChannels=" << nbSubChannels << " / activeSubChannels=" << activeSubChannels << " / DL wbCqi Size=" << dlcqi.m_wbCqi.size() << " / DL wbCqi(0)=" << (uint16_t)dlcqi.m_wbCqi.at(0));
+
     }
   else if (Simulator::Now () > m_a30CqiLast + m_a30CqiPeriocity)
     {
@@ -788,6 +808,8 @@ LteUePhy::CreateDlCqiFeedbackMessage (const SpectrumValue& sinr)
       //dlcqi.m_wbCqi.push_back ((uint16_t) cqiSum / nbSubChannels);
       dlcqi.m_wbPmi = 0; // not yet used
       dlcqi.m_sbMeasResult = rbgMeas;
+
+      NI_LOG_DEBUG("sbCQI Report Generation: P30 nLayer=" << nLayer << " / nbSubChannels=" << nbSubChannels << " / rbgSize=" << rbgSize << " / DL sbCqi size=" << rbgMeas.m_higherLayerSelected.size() << " / DL sbCqi(0)=" << (uint16_t)rbgMeas.m_higherLayerSelected.at(0).m_sbCqi.at(0));
     }
 
   msg->SetDlCqi (dlcqi);
@@ -867,6 +889,8 @@ LteUePhy::ReceiveLteControlMessageList (std::list<Ptr<LteControlMessage> > msgLi
   for (it = msgList.begin (); it != msgList.end (); it++)
     {
       Ptr<LteControlMessage> msg = (*it);
+
+      NI_LOG_DEBUG("LteUePhy::ReceiveLteControlMessageList: Received message type=" << msg->GetMessageType ());
 
       if (msg->GetMessageType () == LteControlMessage::DL_DCI)
         {
@@ -955,6 +979,25 @@ LteUePhy::ReceiveLteControlMessageList (std::list<Ptr<LteControlMessage> > msgLi
       else if (msg->GetMessageType () == LteControlMessage::RAR)
         {
           Ptr<RarLteControlMessage> rarMsg = DynamicCast<RarLteControlMessage> (msg);
+
+          NI_LOG_DEBUG ("LteUePhy::ReceiveLteControlMessageList: RAR received with m_raRnti=" << rarMsg->GetRaRnti () << " (" << m_raRnti << ")");
+
+          // NI API CHANGE
+          // Since we support different transport mechanisms like UDP loopback and named PIPEs,
+          // the random access timing differs between these modes. UDP also introduces jitter
+          // which makes the RAR non-deterministic.
+          // In the supported single user case we only get a RAR for this UE instance, thats why
+          // we can ignore the raRNTI which was calculated based on LTE timing by the eNB.
+          // TODO-NI: find a better solution
+          if (m_niLtePhyModule->GetNiApiEnable () == true)
+            {
+              if (rarMsg->GetRaRnti () != m_raRnti)
+                {
+                  NI_LOG_WARN ("RAR raRnti " << rarMsg->GetRaRnti () << " unexpected! Overwrite RAR raRnit with expected value of " << m_raRnti);
+                  rarMsg->SetRaRnti (m_raRnti);
+                }
+            }
+
           if (rarMsg->GetRaRnti () == m_raRnti)
             {
               for (std::list<RarLteControlMessage::Rar>::const_iterator it = rarMsg->RarListBegin (); it != rarMsg->RarListEnd (); ++it)
@@ -962,11 +1005,13 @@ LteUePhy::ReceiveLteControlMessageList (std::list<Ptr<LteControlMessage> > msgLi
                   if (it->rapId != m_raPreambleId)
                     {
                       // UL grant not for me
+                      NI_LOG_DEBUG("UL grant not for me rapId/raPreambleId:" << (int) it->rapId << "/" << (int) m_raPreambleId);
                       continue;
                     }
                   else
                     {
                       NS_LOG_INFO ("received RAR RNTI " << m_raRnti);
+                      NI_LOG_DEBUG("received RAR RNTI " << m_raRnti);
                       // set the uplink bandwidht according to the UL grant
                       std::vector <int> ulRb;
                       for (int i = 0; i < it->rarPayload.m_grant.m_rbLen; i++)
@@ -982,6 +1027,10 @@ LteUePhy::ReceiveLteControlMessageList (std::list<Ptr<LteControlMessage> > msgLi
                       m_raRnti = 11;
                     }
                 }
+            }
+          else
+            {
+              NI_LOG_DEBUG("RAR raRnti not valid");
             }
         }
       else if (msg->GetMessageType () == LteControlMessage::MIB)
@@ -1078,6 +1127,18 @@ LteUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 
   NS_ASSERT_MSG (frameNo > 0, "the SRS index check code assumes that frameNo starts at 1");
 
+  // NI API CHANGE
+  if (m_niLtePhyModule->GetNiApiEnable () == true){
+      // synchronize sfn and tti counters
+      uint64_t offset = m_niLtePhyModule->NiSfnTtiCounterSync (&frameNo, &subframeNo);
+      // ...
+      if (m_niLtePhyModule->GetNiApiDevType() == NIAPI_UE &&
+          m_niLtePhyModule->GetNiApiLoopbackEnable() == false)
+        {
+          m_niLtePhyModule->NiStartSubframe(frameNo, subframeNo, Seconds (GetTti ()).GetMicroSeconds(), offset);
+        }
+  }
+
   // refresh internal variables
   m_rsReceivedPowerUpdated = false;
   m_rsInterferencePowerUpdated = false;
@@ -1085,65 +1146,72 @@ LteUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 
   if (m_ulConfigured)
     {
-      // update uplink transmission mask according to previous UL-CQIs
-      std::vector <int> rbMask = m_subChannelsForTransmissionQueue.at (0);
-      SetSubChannelsForTransmission (m_subChannelsForTransmissionQueue.at (0));
-
-      // shift the queue
-      for (uint8_t i = 1; i < m_macChTtiDelay; i++)
-        {
-          m_subChannelsForTransmissionQueue.at (i-1) = m_subChannelsForTransmissionQueue.at (i);
-        }
-      m_subChannelsForTransmissionQueue.at (m_macChTtiDelay-1).clear ();
-
-      if (m_srsConfigured && (m_srsStartTime <= Simulator::Now ()))
-        {
-
-          NS_ASSERT_MSG (subframeNo > 0 && subframeNo <= 10, "the SRS index check code assumes that subframeNo starts at 1");
-          if ((((frameNo-1)*10 + (subframeNo-1)) % m_srsPeriodicity) == m_srsSubframeOffset)
-            {
-              NS_LOG_INFO ("frame " << frameNo << " subframe " << subframeNo << " sending SRS (offset=" << m_srsSubframeOffset << ", period=" << m_srsPeriodicity << ")");
-              m_sendSrsEvent = Simulator::Schedule (UL_SRS_DELAY_FROM_SUBFRAME_START, 
-                                                    &LteUePhy::SendSrs,
-                                                    this);
-            }
-        }
-
       std::list<Ptr<LteControlMessage> > ctrlMsg = GetControlMessages ();
       // send packets in queue
       NS_LOG_LOGIC (this << " UE - start slot for PUSCH + PUCCH - RNTI " << m_rnti << " CELLID " << m_cellId);
       // send the current burts of packets
       Ptr<PacketBurst> pb = GetPacketBurst ();
-      if (pb)
-        {
-          if (m_enableUplinkPowerControl)
-            {
-              m_txPower = m_powerControl->GetPuschTxPower (rbMask);
-              SetSubChannelsForTransmission (rbMask);
-            }
-          m_uplinkSpectrumPhy->StartTxDataFrame (pb, ctrlMsg, UL_DATA_DURATION);
-        }
-      else
-        {
-          // send only PUCCH (ideal: fake null bandwidth signal)
-          if (ctrlMsg.size ()>0)
-            {
-              NS_LOG_LOGIC (this << " UE - start TX PUCCH (NO PUSCH)");
-              std::vector <int> dlRb;
 
+      // NI API CHANGE: Switch between legacy ns-3 mode and use of NI API
+      if (m_niLtePhyModule->GetNiApiEnable () == true){
+          m_niLtePhyModule->NiStartTxCtrlDataFrame (pb, ctrlMsg, frameNo, subframeNo);
+      } else { // original ns-3 code
+
+          // update uplink transmission mask according to previous UL-CQIs
+          std::vector <int> rbMask = m_subChannelsForTransmissionQueue.at (0);
+          SetSubChannelsForTransmission (m_subChannelsForTransmissionQueue.at (0));
+
+          // shift the queue
+          for (uint8_t i = 1; i < m_macChTtiDelay; i++)
+            {
+              m_subChannelsForTransmissionQueue.at (i-1) = m_subChannelsForTransmissionQueue.at (i);
+            }
+          m_subChannelsForTransmissionQueue.at (m_macChTtiDelay-1).clear ();
+
+          if (m_srsConfigured && (m_srsStartTime <= Simulator::Now ()))
+            {
+
+              NS_ASSERT_MSG (subframeNo > 0 && subframeNo <= 10, "the SRS index check code assumes that subframeNo starts at 1");
+              if ((((frameNo-1)*10 + (subframeNo-1)) % m_srsPeriodicity) == m_srsSubframeOffset)
+                {
+                  NS_LOG_INFO ("frame " << frameNo << " subframe " << subframeNo << " sending SRS (offset=" << m_srsSubframeOffset << ", period=" << m_srsPeriodicity << ")");
+                  m_sendSrsEvent = Simulator::Schedule (UL_SRS_DELAY_FROM_SUBFRAME_START,
+                                                        &LteUePhy::SendSrs,
+                                                        this);
+                }
+            }
+
+          if (pb)
+            {
               if (m_enableUplinkPowerControl)
                 {
-                  m_txPower = m_powerControl->GetPucchTxPower (dlRb);
+                  m_txPower = m_powerControl->GetPuschTxPower (rbMask);
+                  SetSubChannelsForTransmission (rbMask);
                 }
-
-              SetSubChannelsForTransmission (dlRb);
               m_uplinkSpectrumPhy->StartTxDataFrame (pb, ctrlMsg, UL_DATA_DURATION);
             }
           else
             {
-              NS_LOG_LOGIC (this << " UE - UL NOTHING TO SEND");
+              // send only PUCCH (ideal: fake null bandwidth signal)
+              if (ctrlMsg.size ()>0)
+                {
+                  NS_LOG_LOGIC (this << " UE - start TX PUCCH (NO PUSCH)");
+                  std::vector <int> dlRb;
+
+                  if (m_enableUplinkPowerControl)
+                    {
+                      m_txPower = m_powerControl->GetPucchTxPower (dlRb);
+                    }
+
+                  SetSubChannelsForTransmission (dlRb);
+                  m_uplinkSpectrumPhy->StartTxDataFrame (pb, ctrlMsg, UL_DATA_DURATION);
+                }
+              else
+                {
+                  NS_LOG_LOGIC (this << " UE - UL NOTHING TO SEND");
+                }
             }
-        }
+      } // end NI API switch
     }  // m_configured
 
   // trigger the MAC

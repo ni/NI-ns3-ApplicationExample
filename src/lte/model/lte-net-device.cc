@@ -274,7 +274,11 @@ void
 LteNetDevice::SetPromiscReceiveCallback (PromiscReceiveCallback cb)
 {
   NS_LOG_FUNCTION (this);
-  NS_LOG_WARN ("Promisc mode not supported");
+  //NS_LOG_WARN ("Promisc mode not supported");
+
+  // NI API CHANGE
+  // Add callback in order to allow forwarding of data packets towards tapbridge interface
+  m_promiscRxCallback = cb;
 }
 
 
@@ -284,6 +288,14 @@ LteNetDevice::Receive (Ptr<Packet> p)
 {
   NS_LOG_FUNCTION (this << p);
   m_rxCallback (this, p, Ipv4L3Protocol::PROT_NUMBER, Address ());
+
+  // NI API CHANGE
+  if(!m_promiscRxCallback.IsNull ())
+    {
+      // There are 4 ranges of locally Administered Address Ranges that can be used on a local network:
+      // x2-xx-xx-xx-xx-xx, x6-xx-xx-xx-xx-xx, xA-xx-xx-xx-xx-xx, xE-xx-xx-xx-xx-xx
+      m_promiscRxCallback (this, p, Ipv4L3Protocol::PROT_NUMBER, Mac48Address("02:00:00:00:00:01"), GetAddress(), PACKET_HOST);
+    }
 }
 
 

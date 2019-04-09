@@ -1,7 +1,7 @@
 ## -*- Mode: python; py-indent-offset: 4; indent-tabs-mode: nil; coding: utf-8; -*-
 
 def build(bld):
-    obj = bld.create_ns3_module('wifi', ['network', 'propagation', 'energy', 'spectrum', 'antenna', 'mobility'])
+    obj = bld.create_ns3_module('wifi', ['network', 'propagation', 'energy', 'spectrum', 'antenna', 'mobility', 'internet', 'tap-bridge', 'ni'])
     obj.source = [
         'model/wifi-information-element.cc',
         'model/wifi-information-element-vector.cc',
@@ -80,6 +80,7 @@ def build(bld):
         'model/ht-operations.cc',
         'model/dsss-parameter-set.cc',
         'model/edca-parameter-set.cc',
+        'model/ni-wifi-mac-interface.cc',
         'helper/wifi-radio-energy-model-helper.cc',
         'helper/vht-wifi-mac-helper.cc',
         'helper/ht-wifi-mac-helper.cc',
@@ -184,6 +185,7 @@ def build(bld):
         'model/ht-operations.h',
         'model/dsss-parameter-set.h',
         'model/edca-parameter-set.h',
+        'model/ni-wifi-mac-interface.h',
         'helper/wifi-radio-energy-model-helper.h',
         'helper/vht-wifi-mac-helper.h',
         'helper/ht-wifi-mac-helper.h',

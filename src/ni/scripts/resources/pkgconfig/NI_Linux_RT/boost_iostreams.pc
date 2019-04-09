@@ -1,0 +1,7 @@
+libdir=/usr/lib/
+
+Name: Boost iostreams
+Description: 
+Version: 
+Libs: -L${libdir} -lboost_iostreams
+Cflags:

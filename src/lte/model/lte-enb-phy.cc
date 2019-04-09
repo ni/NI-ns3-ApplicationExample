@@ -26,6 +26,7 @@
 #include <ns3/simulator.h>
 #include <ns3/attribute-accessor-helper.h>
 #include <ns3/double.h>
+#include "ns3/string.h"
 
 
 #include "lte-enb-phy.h"
@@ -83,6 +84,10 @@ public:
   virtual void SendLteControlMessage (Ptr<LteControlMessage> msg);
   virtual uint8_t GetMacChTtiDelay ();
 
+  // NI API CHANGE
+  virtual bool GetNiApiEnable ();
+  virtual bool GetNiApiLoopbackEnable ();
+
 
 private:
   LteEnbPhy* m_phy;
@@ -123,6 +128,19 @@ EnbMemberLteEnbPhySapProvider::GetMacChTtiDelay ()
   return (m_phy->DoGetMacChTtiDelay ());
 }
 
+// NI API CHANGE
+bool
+EnbMemberLteEnbPhySapProvider::GetNiApiEnable ()
+{
+  return (m_phy->DoGetNiApiEnable ());
+}
+
+bool
+EnbMemberLteEnbPhySapProvider::GetNiApiLoopbackEnable ()
+{
+  return (m_phy->DoGetNiApiLoopbackEnable());
+}
+
 
 ////////////////////////////////////////
 // generic LteEnbPhy methods
@@ -152,6 +170,12 @@ LteEnbPhy::LteEnbPhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy)
   m_harqPhyModule = Create <LteHarqPhy> ();
   m_downlinkSpectrumPhy->SetHarqPhyModule (m_harqPhyModule);
   m_uplinkSpectrumPhy->SetHarqPhyModule (m_harqPhyModule);
+
+  // NI API CHANGE: create NiLtePhyInterface object as eNB
+  m_niLtePhyModule = CreateObject <NiLtePhyInterface> (NS3_ENB);
+  // create callbacks from ni phy interface
+  m_niLtePhyModule->SetNiPhyRxDataEndOkCallback (MakeCallback (&LteEnbPhy::PhyPduReceived, this));
+  m_niLtePhyModule->SetNiPhyRxCtrlEndOkCallback (MakeCallback (&LteEnbPhy::ReceiveLteControlMessageList, this));
 }
 
 TypeId
@@ -425,12 +449,25 @@ LteEnbPhy::DoGetMacChTtiDelay ()
   return (m_macChTtiDelay);
 }
 
+// NI API CHANGE
+bool
+LteEnbPhy::DoGetNiApiEnable ()
+{
+  return (m_niLtePhyModule->GetNiApiEnable ());
+}
+bool
+LteEnbPhy::DoGetNiApiLoopbackEnable ()
+{
+  return (m_niLtePhyModule->GetNiApiLoopbackEnable ());
+}
 
 void
 LteEnbPhy::PhyPduReceived (Ptr<Packet> p)
 {
   NS_LOG_FUNCTION (this);
   m_enbPhySapUser->ReceivePhyPdu (p);
+
+  NI_LOG_DEBUG("LteEnbPhy::PhyPduReceived: ");
 }
 
 void
@@ -526,6 +563,8 @@ LteEnbPhy::ReceiveLteControlMessageList (std::list<Ptr<LteControlMessage> > msgL
   std::list<Ptr<LteControlMessage> >::iterator it;
   for (it = msgList.begin (); it != msgList.end (); it++)
     {
+      NI_LOG_DEBUG("LteEnbPhy::ReceiveLteControlMessageList: Received message type=" << (*it)->GetMessageType ());
+
       switch ((*it)->GetMessageType ())
         {
         case LteControlMessage::RACH_PREAMBLE:
@@ -552,6 +591,8 @@ LteEnbPhy::ReceiveLteControlMessageList (std::list<Ptr<LteControlMessage> > msgL
             // check whether the UE is connected
             if (m_ueAttached.find (bsr.m_rnti) != m_ueAttached.end ())
               {
+                NI_LOG_DEBUG("LteEnbPhy::ReceiveLteControlMessageList: BSR");
+
                 m_enbPhySapUser->ReceiveLteControlMessage (*it);
               }
           }
@@ -586,7 +627,12 @@ LteEnbPhy::StartFrame (void)
   m_nrSubFrames = 0;
 
   // send MIB at beginning of every frame
-  m_mib.systemFrameNumber = m_nrSubFrames;
+  // NI API CHANGE: potential bugs in original ns-3 lte code
+  //   (1) why is m_nrSubFrames assigned to m_mib.systemFrameNumber?
+  //   (2) why is m_nrFrames (which seems to be the sfn) not wrapping at 1024?
+  //   (3) if m_nrFrames is assigned to mib.systemFrameNumber, the mib type def in lte-rr-sap.h needs to set to uint32_t
+  // -> here option (3) is used to keep modifications to original ns-3 lte code small and to not impact other functions/modules
+  m_mib.systemFrameNumber = m_nrFrames; // m_mib.systemFrameNumber = m_nrSubFrames;
   Ptr<MibLteControlMessage> mibMsg = Create<MibLteControlMessage> ();
   mibMsg->SetMib (m_mib);
   m_controlMessagesQueue.at (0).push_back (mibMsg);
@@ -601,6 +647,19 @@ LteEnbPhy::StartSubFrame (void)
   NS_LOG_FUNCTION (this);
 
   ++m_nrSubFrames;
+
+  // NI API CHANGE
+  if (m_niLtePhyModule->GetNiApiEnable () == true)
+    {
+      // synchronize sfn and tti counters
+      m_niLtePhyModule->NiSfnTtiCounterSync (&m_nrFrames, &m_nrSubFrames);
+      // ...
+      if (m_niLtePhyModule->GetNiApiDevType() == NIAPI_ENB &&
+          m_niLtePhyModule->GetNiApiLoopbackEnable() == false)
+        {
+          m_niLtePhyModule->NiStartSubframe(m_nrFrames, m_nrSubFrames, Seconds (GetTti ()).GetMicroSeconds(), 0);
+        }
+    }
 
   /*
    * Send SIB1 at 6th subframe of every odd-numbered radio frame. This is
@@ -744,16 +803,23 @@ LteEnbPhy::StartSubFrame (void)
         }
     }
 
-  SendControlChannels (ctrlMsg);
-
   // send data frame
   Ptr<PacketBurst> pb = GetPacketBurst ();
-  if (pb)
-    {
-      Simulator::Schedule (DL_CTRL_DELAY_FROM_SUBFRAME_START, // ctrl frame fixed to 3 symbols
-                           &LteEnbPhy::SendDataChannels,
-                           this,pb);
-    }
+
+  // NI API CHANGE: Switch between legacy ns-3 mode and use of NI API
+  if (m_niLtePhyModule->GetNiApiEnable () == true){
+      m_niLtePhyModule->NiStartTxCtrlDataFrame (pb, ctrlMsg, m_nrFrames, m_nrSubFrames);
+  } else { // original ns-3 code
+
+      SendControlChannels (ctrlMsg);
+
+      if (pb)
+        {
+          Simulator::Schedule (DL_CTRL_DELAY_FROM_SUBFRAME_START, // ctrl frame fixed to 3 symbols
+                               &LteEnbPhy::SendDataChannels,
+                               this,pb);
+        }
+  } // end NI API switch
 
   // trigger the MAC
   m_enbPhySapUser->SubframeIndication (m_nrFrames, m_nrSubFrames);
@@ -762,6 +828,8 @@ LteEnbPhy::StartSubFrame (void)
                        &LteEnbPhy::EndSubFrame,
                        this);
 
+  // NI API CHANGE: temporary change for timing measurements
+  NI_LOG_TRACE("[Trace#10],StartSubFrameEnd," << ( NiUtils::GetSysTime()-g_logTraceStartSubframeTime));
 }
 
 void
@@ -783,6 +851,8 @@ LteEnbPhy::SendControlChannels (std::list<Ptr<LteControlMessage> > ctrlMsgList)
     }
   m_downlinkSpectrumPhy->StartTxDlCtrlFrame (ctrlMsgList, pss);
 
+  // NI API CHANGE: temporary used for timing measurements
+  NI_LOG_TRACE("[Trace#11],SendControlChannels," << ( NiUtils::GetSysTime()-g_logTraceStartSubframeTime));
 }
 
 void
@@ -795,6 +865,9 @@ LteEnbPhy::SendDataChannels (Ptr<PacketBurst> pb)
   std::list<Ptr<LteControlMessage> > ctrlMsgList;
   ctrlMsgList.clear ();
   m_downlinkSpectrumPhy->StartTxDataFrame (pb, ctrlMsgList, DL_DATA_DURATION);
+
+  // NI API CHANGE: temporary used for timing measurements
+  NI_LOG_TRACE("[Trace#12],SendDataChannels," << ( NiUtils::GetSysTime()-g_logTraceStartSubframeTime));
 }
 
 
@@ -802,6 +875,10 @@ void
 LteEnbPhy::EndSubFrame (void)
 {
   NS_LOG_FUNCTION (this << Simulator::Now ().GetSeconds ());
+
+  // TODO-NI: hand over data to PHY
+  // ...
+
   if (m_nrSubFrames == 10)
     {
       Simulator::ScheduleNow (&LteEnbPhy::EndFrame, this);

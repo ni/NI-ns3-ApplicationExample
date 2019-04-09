@@ -41,7 +41,7 @@
 #include <ns3/lte-rlc-am.h>
 #include <ns3/lte-pdcp.h>
 
-
+#include "ns3/ni-logging.h"
 
 
 namespace ns3 {
@@ -830,6 +830,8 @@ UeManager::RecvRrcConnectionRequest (LteRrcSap::RrcConnectionRequest msg)
           {
             NS_LOG_INFO ("rejecting connection request for RNTI " << m_rnti);
 
+            NI_LOG_CONSOLE_DEBUG("LTE.ENB.RRC: rejecting connection request for RNTI " << m_rnti);
+
             // send RRC CONNECTION REJECT to UE
             LteRrcSap::RrcConnectionReject rejectMsg;
             rejectMsg.waitTime = 3;
@@ -1247,6 +1249,9 @@ UeManager::SwitchToState (State newState)
   NS_LOG_INFO (this << " IMSI " << m_imsi << " RNTI " << m_rnti << " UeManager "
                     << ToString (oldState) << " --> " << ToString (newState));
   m_stateTransitionTrace (m_imsi, m_rrc->m_cellId, m_rnti, oldState, newState);
+
+  NI_LOG_INFO ("UeManager::UeManager::SwitchToState: imsi=" << m_imsi << " rnti=" << m_rnti << " " << ToString (oldState) << " --> " << ToString (newState) );
+  NI_LOG_CONSOLE_DEBUG ("LTE.ENB.RRC: " << ToString (oldState) << " --> " << ToString (newState) << " (IMSI=" << m_imsi << ", RNTI=" << m_rnti << ")");
 
   switch (newState)
     {
@@ -2271,6 +2276,9 @@ LteEnbRrc::AddUe (UeManager::State state)
   ueManager->Initialize ();
   NS_LOG_DEBUG (this << " New UE RNTI " << rnti << " cellId " << m_cellId << " srs CI " << ueManager->GetSrsConfigurationIndex ());
   m_newUeContextTrace (m_cellId, rnti);
+
+  NI_LOG_DEBUG ("eNB RRC: Added UE with new RNTI " << rnti << " and Cell Id " << m_cellId);
+
   return rnti;
 }
 

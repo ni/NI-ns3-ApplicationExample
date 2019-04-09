@@ -36,6 +36,8 @@
 
 #include <cmath>
 
+#include "ns3/ni-logging.h"
+
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("LteUeRrc");
@@ -446,6 +448,9 @@ LteUeRrc::DoSendData (Ptr<Packet> packet, uint8_t bid)
                      << " (LCID " << (uint32_t) params.lcid << ")"
                      << " (" << packet->GetSize () << " bytes)");
   it->second->m_pdcp->GetLtePdcpSapProvider ()->TransmitPdcpSdu (params);
+
+  NI_LOG_DEBUG("LteUeRrc::DoSendData: RNTI=" << m_rnti << " sending " << packet << "on DRBID " << (uint32_t) drbid << " (LCID" << params.lcid << ")" << " (" << packet->GetSize () << " bytes)");
+
     }
 }
 
@@ -504,6 +509,7 @@ LteUeRrc::DoSetTemporaryCellRnti (uint16_t rnti)
 void
 LteUeRrc::DoNotifyRandomAccessSuccessful ()
 {
+  NI_LOG_DEBUG("LteUeRrc::DoNotifyRandomAccessSuccessful, State: " << m_state);
   NS_LOG_FUNCTION (this << m_imsi << ToString (m_state));
   m_randomAccessSuccessfulTrace (m_imsi, m_cellId, m_rnti);
 
@@ -560,6 +566,9 @@ LteUeRrc::DoNotifyRandomAccessFailed ()
     case IDLE_RANDOM_ACCESS:
       {
         SwitchToState (IDLE_CAMPED_NORMALLY);
+
+        NI_LOG_DEBUG ("LteUeRrc::DoNotifyRandomAccessFailed: SwitchToState (IDLE_CAMPED_NORMALLY)");
+
         m_asSapUser->NotifyConnectionFailed ();
       }
       break;
@@ -691,6 +700,9 @@ void
 LteUeRrc::DoRecvMasterInformationBlock (uint16_t cellId,
                                         LteRrcSap::MasterInformationBlock msg)
 { 
+
+  NI_LOG_DEBUG("LteUeRrc::DoRecvMasterInformationBlock: MIB received - DL BW: " << (int) msg.dlBandwidth);
+
   m_dlBandwidth = msg.dlBandwidth;
   m_cphySapProvider->SetDlBandwidth (msg.dlBandwidth);
   m_hasReceivedMib = true;
@@ -701,6 +713,9 @@ LteUeRrc::DoRecvMasterInformationBlock (uint16_t cellId,
     case IDLE_WAIT_MIB:
       // manual attachment
       SwitchToState (IDLE_CAMPED_NORMALLY);
+
+      NI_LOG_DEBUG ("LteUeRrc::DoRecvMasterInformationBlock: SwitchToState (IDLE_CAMPED_NORMALLY)");
+
       break;
 
     case IDLE_WAIT_MIB_SIB1:
@@ -718,6 +733,8 @@ void
 LteUeRrc::DoRecvSystemInformationBlockType1 (uint16_t cellId,
                                              LteRrcSap::SystemInformationBlockType1 msg)
 {
+  NI_LOG_DEBUG("LteUeRrc::DoRecvSystemInformationBlockType1: SIB1 received - Cell ID: " << (int) msg.cellAccessRelatedInfo.cellIdentity);
+
   switch (m_state)
     {
     case IDLE_WAIT_SIB1:
@@ -830,6 +847,13 @@ LteUeRrc::DoRecvSystemInformation (LteRrcSap::SystemInformation msg)
           m_cmacSapProvider->ConfigureRach (rc);
           m_cphySapProvider->ConfigureUplink (m_ulEarfcn, m_ulBandwidth);
           m_cphySapProvider->ConfigureReferenceSignalPower(msg.sib2.radioResourceConfigCommon.pdschConfigCommon.referenceSignalPower);
+
+          NI_LOG_DEBUG("LteUeRrc::DoRecvSystemInformation: SIB2 received - UL BW: " << (int) m_ulBandwidth <<
+                       " / UL CF: " << (int) m_ulEarfcn <<
+                       " / numberOfRaPreambles: " << (int) rc.numberOfRaPreambles <<
+                       " / preambleTransMax: " << (int) rc.preambleTransMax <<
+                       " / raResponseWindowSize: " << (int) rc.raResponseWindowSize);
+
           if (m_state == IDLE_WAIT_SIB2)
             {
               NS_ASSERT (m_connectionPending);
@@ -1005,6 +1029,8 @@ LteUeRrc::DoRecvRrcConnectionReject (LteRrcSap::RrcConnectionReject msg)
   m_hasReceivedSib2 = false;         // invalidate the previously received SIB2
   SwitchToState (IDLE_CAMPED_NORMALLY);
   m_asSapUser->NotifyConnectionFailed ();  // inform upper layer
+
+  NI_LOG_DEBUG ("LteUeRrc::DoRecvRrcConnectionReject: SwitchToState (IDLE_CAMPED_NORMALLY)");
 }
 
 
@@ -1094,6 +1120,8 @@ LteUeRrc::EvaluateCellForSelection ()
       m_cphySapProvider->SetDlBandwidth (m_dlBandwidth);
       m_initialCellSelectionEndOkTrace (m_imsi, cellId);
       SwitchToState (IDLE_CAMPED_NORMALLY);
+
+      NI_LOG_DEBUG ("LteUeRrc::EvaluateCellForSelection: SwitchToState (IDLE_CAMPED_NORMALLY)");
     }
   else
     {
@@ -2774,6 +2802,8 @@ LteUeRrc::LeaveConnectedMode ()
   m_bid2DrbidMap.clear ();
   m_srb1 = 0;
   SwitchToState (IDLE_CAMPED_NORMALLY);
+
+  NI_LOG_DEBUG ("LteUeRrc::LeaveConnectedMode: SwitchToState (IDLE_CAMPED_NORMALLY)");
 }
 
 void
@@ -2783,6 +2813,9 @@ LteUeRrc::ConnectionTimeout ()
   m_cmacSapProvider->Reset ();       // reset the MAC
   m_hasReceivedSib2 = false;         // invalidate the previously received SIB2
   SwitchToState (IDLE_CAMPED_NORMALLY);
+
+  NI_LOG_DEBUG ("LteUeRrc::ConnectionTimeout: SwitchToState (IDLE_CAMPED_NORMALLY)");
+
   m_connectionTimeoutTrace (m_imsi, m_cellId, m_rnti);
   m_asSapUser->NotifyConnectionFailed ();  // inform upper layer
 }
@@ -2818,6 +2851,8 @@ LteUeRrc::SwitchToState (State newState)
   NS_LOG_INFO (this << " IMSI " << m_imsi << " RNTI " << m_rnti << " UeRrc "
                     << ToString (oldState) << " --> " << ToString (newState));
   m_stateTransitionTrace (m_imsi, m_cellId, m_rnti, oldState, newState);
+
+  NI_LOG_CONSOLE_DEBUG ("LTE.UE.RRC: " << ToString (oldState) << " --> " << ToString (newState) << " (IMSI=" << m_imsi << ", RNTI=" << m_rnti << ")");
 
   switch (newState)
     {

@@ -1,20 +1,61 @@
-# Makefile wrapper for waf
+# NI Makefile wrapper for waf
 
-all:
-	./waf
+CXXOPTIONS := CXXFLAGS='-O3 -g -rdynamic -std=c++0x'
+
+all:	optimized
+optimized:	configure compile
+debug:	configure_debug compile
+
+# MODIFY HERE --------------------------------------------------------------------------------------
+configure:
+	$(CXXOPTIONS) ./waf configure -d optimized --enable-examples 
+configure_debug:
+	$(CXXOPTIONS) ./waf configure -d debug --enable-examples
+configure_tests:
+	$(CXXOPTIONS) ./waf configure -d debug --enable-examples --enable-tests
+# MODIFY HERE --------------------------------------------------------------------------------------
 
 # free free to change this part to suit your requirements
-configure:
-	./waf configure --enable-examples --enable-tests
+#configure:
+#	./waf configure --enable-examples --enable-tests
 
-build:
-	./waf build
+#build:
+#	./waf build
 
 install:
 	./waf install
 
 clean:
 	./waf clean
+	rm -fr *.pcap *Stats.txt *.flowmon *.log testpy-output
 
 distclean:
 	./waf distclean
+
+compile:
+#	sh -c ulimit -s unlimited
+	ulimit -s unlimited; $(CXXOPTIONS) ./waf build
+	
+# install NI relevant exeutables and libraries to /usr/local
+# usage: "sudo make install_ni"
+install_ni:
+	cp build/libns3.26*.so /usr/local/lib
+	cp build/src/ni/examples/ns3.26-ni* /usr/local/bin/
+	cp build/src/tap-bridge/ns3.26-tap* /usr/local/bin/
+	chmod +s /usr/local/bin/ns3.26*
+	ldconfig
+		
+# sync local ns-3 directory to remote machine (e.g. Linux RT controller) 
+# useage: "make sync target=DRE-ELBE-C02"
+sync:
+	rsync -e ssh -avu --exclude=build --exclude=.svn --delete $(shell pwd) root@$(target):"~/"
+	
+prepare_usrp_2974_lvcomms20:
+	opkg update; opkg install --force-downgrade packagegroup-core-buildessential 
+	
+prepare_usrp_2974_lvcomms20_dev:
+	opkg update; opkg install --force-downgrade packagegroup-core-buildessential gcc-dev python-pip python-dev boost boost-dev mono-dev sudo rsync tcpdump htop
+	
+run_tests_ni:
+	cd src/ni/test/; ./ni_test_single_instance.sh; ./ni_test.sh; cd -
+	

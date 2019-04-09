@@ -32,6 +32,8 @@
 #include <ns3/lte-vendor-specific-parameters.h>
 #include <ns3/boolean.h>
 
+#include "ns3/ni-logging.h"
+
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("RrFfMacScheduler");
@@ -1402,6 +1404,7 @@ RrFfMacScheduler::DoSchedUlTriggerReq (const struct FfMacSchedSapProvider::Sched
       std::set <uint16_t>::iterator itRnti = rntiAllocated.find ((*it).first);
       // select UEs with queues not empty and not yet allocated for HARQ
       NS_LOG_INFO (this << " UE " << (*it).first << " queue " << (*it).second);
+      NI_LOG_DEBUG (this << " UE " << (*it).first << " queue " << (*it).second);
       if (((*it).second > 0)&&(itRnti == rntiAllocated.end ()))
         {
           nflows++;
@@ -1478,6 +1481,7 @@ RrFfMacScheduler::DoSchedUlTriggerReq (const struct FfMacSchedSapProvider::Sched
       uldci.m_rbLen = rbPerFlow;
       bool allocated = false;
       NS_LOG_INFO (this << " RB Allocated " << rbAllocated << " rbPerFlow " << rbPerFlow << " flows " << nflows);
+      NI_LOG_DEBUG (this << " RB Allocated " << rbAllocated << " rbPerFlow " << rbPerFlow << " flows " << nflows);
       while ((!allocated)&&((rbAllocated + rbPerFlow - m_cschedCellConfig.m_ulBandwidth) < 1) && (rbPerFlow != 0))
         {
           // check availability
@@ -1564,6 +1568,8 @@ RrFfMacScheduler::DoSchedUlTriggerReq (const struct FfMacSchedSapProvider::Sched
                   it = m_ceBsrRxed.begin ();
                 }
               NS_LOG_DEBUG (this << " UE discared for CQI=0, RNTI " << uldci.m_rnti);
+              NI_LOG_DEBUG (this << " UE discared for CQI=0, RNTI " << uldci.m_rnti);
+
               // remove UE from allocation map
               for (uint16_t i = uldci.m_rbStart; i < uldci.m_rbStart + uldci.m_rbLen; i++)
                 {
@@ -1684,12 +1690,14 @@ RrFfMacScheduler::DoSchedUlMacCtrlInfoReq (const struct FfMacSchedSapProvider::S
               // create the new entry
               m_ceBsrRxed.insert ( std::pair<uint16_t, uint32_t > (rnti, buffer));
               NS_LOG_INFO (this << " Insert RNTI " << rnti << " queue " << buffer);
+              NI_LOG_DEBUG("RrFfMacScheduler::DoSchedUlMacCtrlInfoReq: Insert RNTI " << rnti << " queue " << buffer);
             }
           else
             {
               // update the buffer size value
               (*it).second = buffer;
               NS_LOG_INFO (this << " Update RNTI " << rnti << " queue " << buffer);
+              NI_LOG_DEBUG("RrFfMacScheduler::DoSchedUlMacCtrlInfoReq: Update RNTI " << rnti << " queue " << buffer);
             }
         }
     }
@@ -1965,6 +1973,7 @@ RrFfMacScheduler::UpdateUlRlcBufferInfo (uint16_t rnti, uint16_t size)
   if (it != m_ceBsrRxed.end ())
     {
       NS_LOG_INFO (this << " Update RLC BSR UE " << rnti << " size " << size << " BSR " << (*it).second);
+      NI_LOG_DEBUG ("RrFfMacScheduler::UpdateUlRlcBufferInfo: Update RLC BSR UE " << rnti << " size " << size << " BSR " << (*it).second);
       if ((*it).second >= size)
         {
           (*it).second -= size;
@@ -1977,6 +1986,7 @@ RrFfMacScheduler::UpdateUlRlcBufferInfo (uint16_t rnti, uint16_t size)
   else
     {
       NS_LOG_ERROR (this << " Does not find BSR report info of UE " << rnti);
+      NI_LOG_DEBUG ("RrFfMacScheduler::UpdateUlRlcBufferInfo: Update RLC BSR UE " << rnti << " size " << size << " BSR " << (*it).second);
     }
 
 }

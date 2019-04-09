@@ -90,6 +90,9 @@ public:
 protected:
   
   NetDevice::ReceiveCallback m_rxCallback;
+
+  // NI API CHANGE
+  NetDevice::PromiscReceiveCallback m_promiscRxCallback;
   
 private:
   LteNetDevice (const LteNetDevice &);

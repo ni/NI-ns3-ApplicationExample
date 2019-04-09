@@ -26,6 +26,12 @@
 #include "ns3/lte-pdcp-sap.h"
 #include "ns3/lte-pdcp-tag.h"
 
+#include "ns3/lwa-tag.h"
+#include "ns3/lwip-tag.h"
+#include "ns3/pdcp-lcid.h"
+
+#include "ns3/ni-module.h"
+
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("LtePdcp");
@@ -63,7 +69,9 @@ LtePdcpSpecificLteRlcSapUser::ReceivePdcpPdu (Ptr<Packet> p)
 NS_OBJECT_ENSURE_REGISTERED (LtePdcp);
 
 LtePdcp::LtePdcp ()
-  : m_pdcpSapUser (0),
+  : pdcp_decisionlwa(0),
+    pdcp_decisionlwip(0),
+    m_pdcpSapUser (0),
     m_rlcSapProvider (0),
     m_rnti (0),
     m_lcid (0),
@@ -85,6 +93,7 @@ LtePdcp::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::LtePdcp")
     .SetParent<Object> ()
+    .AddConstructor<LtePdcp> ()
     .SetGroupName("Lte")
     .AddTraceSource ("TxPDU",
                      "PDU transmission notified to the RLC.",
@@ -94,6 +103,20 @@ LtePdcp::GetTypeId (void)
                      "PDU received.",
                      MakeTraceSourceAccessor (&LtePdcp::m_rxPdu),
                      "ns3::LtePdcp::PduRxTracedCallback")
+    .AddTraceSource ("TxPDUtrace",//modifications for trace
+                     "PDU to be transmit.",//modifications for trace
+                     MakeTraceSourceAccessor (&LtePdcp::m_pdcptxtrace),//modifications for trace
+                     "ns3::Packet::TracedCallback")//modifications for trace
+    .AddAttribute ("PDCPDecLwa",
+                     "PDCP LWA or LWIP decision variable",
+                     UintegerValue (0),
+                     MakeUintegerAccessor (&LtePdcp::pdcp_decisionlwa),
+                     MakeUintegerChecker<uint32_t>())
+    .AddAttribute ("PDCPDecLwip",
+                     "PDCP LWIP decision variable",
+                     UintegerValue (0),
+                     MakeUintegerAccessor (&LtePdcp::pdcp_decisionlwip),
+                     MakeUintegerChecker<uint32_t>())
     ;
   return tid;
 }
@@ -172,6 +195,8 @@ LtePdcp::DoTransmitPdcpSdu (Ptr<Packet> p)
 {
   NS_LOG_FUNCTION (this << m_rnti << (uint32_t) m_lcid << p->GetSize ());
 
+  NI_LOG_DEBUG("eNB send PDCP data for lcid=" << (uint32_t) m_lcid << ", m_rnti=" <<  m_rnti << ", packet size=" << p->GetSize ());
+
   LtePdcpHeader pdcpHeader;
   pdcpHeader.SetSequenceNumber (m_txSequenceNumber);
 
@@ -196,7 +221,56 @@ LtePdcp::DoTransmitPdcpSdu (Ptr<Packet> p)
   params.lcid = m_lcid;
   params.pdcpPdu = p;
 
-  m_rlcSapProvider->TransmitPdcpPdu (params);
+  LwaTag LWATag;
+  LwipTag LWIPTag;
+  PdcpLcid lcidtag;
+
+  //NI API CHANGE: read out values from remote control database and overwrite local decision variables
+  if (pdcp_decisionlwa != g_RemoteControlEngine.GetPdb()->getParameterLwaDecVariable())
+    {
+	  pdcp_decisionlwa = g_RemoteControlEngine.GetPdb()->getParameterLwaDecVariable();
+	  NI_LOG_CONSOLE_DEBUG("NI.RC:LWA value changed! LWA value is : " << pdcp_decisionlwa);
+    }
+  if (pdcp_decisionlwip != g_RemoteControlEngine.GetPdb()->getParameterLwipDecVariable())
+    {
+	  pdcp_decisionlwip = g_RemoteControlEngine.GetPdb()->getParameterLwipDecVariable();
+	  NI_LOG_CONSOLE_DEBUG("NI.RC:LWIP value changed! LWIP value is : " << pdcp_decisionlwip);
+    }
+
+  // switch between the lwa/lwip modes
+  if ((pdcp_decisionlwa>0)&&(pdcp_decisionlwip==0)&&(m_lcid>=3)){
+      if(pdcp_decisionlwa==1){
+          // split packets between lwa und default lte link
+          if((m_packetCounter%2)==0){
+              m_rlcSapProvider->TransmitPdcpPdu (params);
+          }
+          if((m_packetCounter%2)==1){
+              LWATag.Set(pdcp_decisionlwa);
+              lcidtag.Set((uint32_t)m_lcid);
+              p->AddPacketTag (LWATag);
+              p->AddByteTag (lcidtag);
+              m_pdcptxtrace(params.pdcpPdu);
+          }
+          m_packetCounter++;
+      } else {
+          // all packets routed over lwa (all drb)
+          LWATag.Set(pdcp_decisionlwa);
+          lcidtag.Set((uint32_t)m_lcid);
+          p->AddPacketTag (LWATag);
+          p->AddByteTag (lcidtag);
+          m_pdcptxtrace(params.pdcpPdu);
+      }
+  } else if ((pdcp_decisionlwa==0)&&(pdcp_decisionlwip>0)&&(m_lcid>=3)) {
+      // all packets routed over lwip
+      LWIPTag.Set(pdcp_decisionlwip);
+      lcidtag.Set((uint32_t)m_lcid);
+      p->AddPacketTag (LWIPTag);
+      p->AddByteTag (lcidtag);
+      m_pdcptxtrace(params.pdcpPdu);
+  } else {
+      // default lte link - used also always for srb (lcid 0/1/2)
+      m_rlcSapProvider->TransmitPdcpPdu (params);
+  }
 }
 
 void

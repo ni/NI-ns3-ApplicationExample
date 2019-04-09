@@ -1,0 +1,7 @@
+libdir=/usr/lib/
+
+Name: Boost Serialialization
+Description: 
+Version: 
+Libs: -L${libdir} -lboost_serialization
+Cflags:

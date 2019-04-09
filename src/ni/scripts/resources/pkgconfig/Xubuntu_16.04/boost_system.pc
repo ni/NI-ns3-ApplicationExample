@@ -1,0 +1,8 @@
+#libdir=/usr/local/lib/boost_1_61_0
+libdir=/usr/lib/x86_64-linux-gnu
+
+Name: Boost System
+Description: 
+Version: 
+Libs: -L${libdir} -lboost_system
+Cflags:

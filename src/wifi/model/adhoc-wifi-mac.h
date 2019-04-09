@@ -25,6 +25,9 @@
 #include "regular-wifi-mac.h"
 #include "amsdu-subframe-header.h"
 
+#include "ns3/ni.h"
+#include "ns3/ni-wifi-mac-interface.h"
+
 namespace ns3 {
 
 /**
@@ -63,6 +66,10 @@ public:
 
 private:
   virtual void Receive (Ptr<Packet> packet, const WifiMacHeader *hdr);
+
+  // NI API CHANGE
+  Ptr<NiWifiMacInterface> m_NiWifiAdMacInterface;
+
 };
 
 } //namespace ns3

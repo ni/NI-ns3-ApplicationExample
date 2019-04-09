@@ -35,6 +35,8 @@
 #include <set>
 #include <ns3/lte-ue-power-control.h>
 
+// NI includes
+#include "ns3/ni.h"
 
 namespace ns3 {
 
@@ -472,6 +474,9 @@ private:
   
   Ptr<SpectrumValue> m_noisePsd; ///< Noise power spectral density for
                                  ///the configured bandwidth 
+
+  // NI API CHANGE
+  Ptr<NiLtePhyInterface> m_niLtePhyModule;
 
 }; // end of `class LteUePhy`
 

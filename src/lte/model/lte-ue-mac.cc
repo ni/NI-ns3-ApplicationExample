@@ -35,7 +35,7 @@
 #include <ns3/simulator.h>
 #include <ns3/lte-common.h>
 
-
+#include "ns3/ni-logging.h"
 
 namespace ns3 {
 
@@ -388,6 +388,9 @@ LteUeMac::SendRaPreamble (bool contention)
   m_raRnti = m_subframeNo - 1;
   m_uePhySapProvider->SendRachPreamble (m_raPreambleId, m_raRnti);
   NS_LOG_INFO (this << " sent preamble id " << (uint32_t) m_raPreambleId << ", RA-RNTI " << (uint32_t) m_raRnti);
+
+  NI_LOG_DEBUG("LteUeMac::SendRaPreamble: sent preamble id " << (uint32_t) m_raPreambleId << ", RA-RNTI " << (uint32_t) m_raRnti);
+
   // 3GPP 36.321 5.1.4 
   Time raWindowBegin = MilliSeconds (3); 
   Time raWindowEnd = MilliSeconds (3 + m_rachConfig.raResponseWindowSize);
@@ -409,6 +412,7 @@ LteUeMac::RecvRaResponse (BuildRarListElement_s raResponse)
   m_waitingForRaResponse = false;
   m_noRaResponseReceivedEvent.Cancel ();
   NS_LOG_INFO ("got RAR for RAPID " << (uint32_t) m_raPreambleId << ", setting T-C-RNTI = " << raResponse.m_rnti);
+  NI_LOG_DEBUG ("got RAR for RAPID " << (uint32_t) m_raPreambleId << ", setting T-C-RNTI = " << raResponse.m_rnti);
   m_rnti = raResponse.m_rnti;
   m_cmacSapUser->SetTemporaryCellRnti (m_rnti);
   // in principle we should wait for contention resolution,
@@ -443,11 +447,17 @@ LteUeMac::RaResponseTimeout (bool contention)
   if (m_preambleTransmissionCounter == m_rachConfig.preambleTransMax + 1)
     {
       NS_LOG_INFO ("RAR timeout, preambleTransMax reached => giving up");
+
+      NI_LOG_DEBUG("LteUeMac::RaResponseTimeout: RAR timeout, preambleTransMax reached => giving up");
+
       m_cmacSapUser->NotifyRandomAccessFailed ();
     }
   else
     {
       NS_LOG_INFO ("RAR timeout, re-send preamble");
+
+      NI_LOG_DEBUG("LteUeMac::RaResponseTimeout: RAR timeout, re-send preamble");
+
       if (contention)
         {
           RandomlySelectAndSendRaPreamble ();
@@ -723,6 +733,9 @@ LteUeMac::DoReceiveLteControlMessage (Ptr<LteControlMessage> msg)
           Ptr<RarLteControlMessage> rarMsg = DynamicCast<RarLteControlMessage> (msg);
           uint16_t raRnti = rarMsg->GetRaRnti ();
           NS_LOG_LOGIC (this << "got RAR with RA-RNTI " << (uint32_t) raRnti << ", expecting " << (uint32_t) m_raRnti);
+
+          NI_LOG_DEBUG ("LteUeMac::DoReceiveLteControlMessage: got RAR with RA-RNTI " << (uint32_t) raRnti << ", expecting " << (uint32_t) m_raRnti);
+
           if (raRnti == m_raRnti) // RAR corresponds to TX subframe of preamble
             {
               for (std::list<RarLteControlMessage::Rar>::const_iterator it = rarMsg->RarListBegin ();
@@ -738,6 +751,7 @@ LteUeMac::DoReceiveLteControlMessage (Ptr<LteControlMessage> msg)
                     }
                 }
             }
+          NI_LOG_DEBUG ("LteControlMessage::RAR done");
         }
     }
   else

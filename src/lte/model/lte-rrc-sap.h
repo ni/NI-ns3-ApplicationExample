@@ -522,7 +522,9 @@ public:
   struct MasterInformationBlock
   {
     uint8_t dlBandwidth;
-    uint8_t systemFrameNumber;
+    // NI API CHANGE - potential bug in orginal ns-3 code - in lte-enb-phy the sfn is uint32
+    uint32_t systemFrameNumber;
+    //uint8_t systemFrameNumber;
   };
 
   struct SystemInformationBlockType1

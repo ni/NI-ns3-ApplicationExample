@@ -61,6 +61,9 @@ public:
   */
   virtual uint8_t GetMacChTtiDelay () = 0;
 
+  // NI API CHANGE
+  virtual bool GetNiApiEnable () = 0;
+  virtual bool GetNiApiLoopbackEnable () = 0;
 
 };
 

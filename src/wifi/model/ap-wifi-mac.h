@@ -35,6 +35,8 @@
 #include "edca-parameter-set.h"
 #include "ns3/random-variable-stream.h"
 
+#include "ns3/ni-wifi-mac-interface.h"
+
 namespace ns3 {
 
 /**
@@ -268,6 +270,9 @@ private:
   std::list<Mac48Address> m_nonErpStations;  //!< List of all non-ERP stations currently associated to the AP
   std::list<Mac48Address> m_nonHtStations;   //!< List of all non-HT stations currently associated to the AP
   bool m_enableNonErpProtection;             //!< Flag whether protection mechanism is used or not when non-ERP STAs are present within the BSS
+
+  // NI API CHANGE
+  Ptr<NiWifiMacInterface> m_NiWifiMacInterface;
 };
 
 } //namespace ns3

@@ -32,7 +32,8 @@
 #include <map>
 #include <set>
 
-
+// NI includes
+#include "ns3/ni.h"
 
 namespace ns3 {
 
@@ -322,6 +323,10 @@ private:
   void DoSendLteControlMessage (Ptr<LteControlMessage> msg);
   uint8_t DoGetMacChTtiDelay ();
 
+  // NI API CHANGE
+  bool DoGetNiApiEnable ();
+  bool DoGetNiApiLoopbackEnable ();
+
   /**
    * Add the given RNTI to the list of attached UE #m_ueAttached.
    * \param rnti RNTI of a UE
@@ -435,6 +440,9 @@ private:
    * PhyTransmissionStatParameters.
    */
   TracedCallback<PhyTransmissionStatParameters> m_dlPhyTransmission;
+
+  // NI API CHANGE
+  Ptr<NiLtePhyInterface> m_niLtePhyModule;
 
 }; // end of `class LteEnbPhy`
 

@@ -1,0 +1,23 @@
+## -*- Mode: python; py-indent-offset: 4; indent-tabs-mode: nil; coding: utf-8; -*-
+
+def build(bld):
+#    if bld.env["ENABLE_REAL_TIME"]:
+        obj = bld.create_ns3_program('ni-lte-simple',
+            ['core', 'network', 'config-store', 'wifi', 'mobility', 'internet','point-to-point','lte', 'stats', 'applications', 'ni'])
+        obj.source = 'ni-lte-simple.cc'       
+        
+        obj = bld.create_ns3_program('ni-wifi-simple',
+            ['core', 'network', 'config-store', 'wifi', 'mobility', 'internet','applications', 'ni'])
+        obj.source = 'ni-wifi-simple.cc'
+        
+        obj = bld.create_ns3_program('ni-lte-wifi-lan-interworking',
+            ['virtual-net-device','core', 'network', 'config-store', 'wifi', 'mobility', 'internet','point-to-point','lte','stats', 'flow-monitor','applications', 'ni'])
+        obj.source = 'ni-lte-wifi-lan-interworking.cc'
+        
+        obj = bld.create_ns3_program('ni-lte-wifi-extended',
+            ['virtual-net-device','core', 'network', 'config-store', 'wifi', 'mobility', 'internet','point-to-point','lte','stats', 'flow-monitor','applications', 'ni'])
+        obj.source = 'ni-lte-wifi-extended.cc'
+        
+        obj = bld.create_ns3_program('ni-remote-control-simple',
+            ['lte', 'ni'])
+        obj.source = 'ni-remote-control-simple.cc'

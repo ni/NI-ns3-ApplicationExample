@@ -198,6 +198,7 @@ protected:
   SystemCondition m_condition;
 };
 
+void WallClockSynchronizerSetCalcNormalizedRealtimeCb (uint64_t (*cb) (uint64_t, uint64_t));
 } // namespace ns3
 
 #endif /* WALL_CLOCK_SYNCHRONIZER_H */

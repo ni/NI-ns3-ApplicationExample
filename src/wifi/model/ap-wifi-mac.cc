@@ -96,6 +96,14 @@ ApWifiMac::ApWifiMac ()
   SetTypeOfStation (AP);
 
   m_enableBeaconGeneration = false;
+
+  // NI API CHANGE
+  NI_LOG_DEBUG ("Create ApWifiMac");
+  // create the NiWifiMacInterface object
+  m_NiWifiMacInterface = CreateObject <NiWifiMacInterface> (NS3_AP);
+  // create callbacks from ni wifi sublayer tx interface
+  m_NiWifiMacInterface->SetNiApWifiRxDataEndOkCallback (MakeCallback (&ApWifiMac::Receive, this));
+
 }
 
 ApWifiMac::~ApWifiMac ()
@@ -130,15 +138,22 @@ void
 ApWifiMac::SetBeaconGeneration (bool enable)
 {
   NS_LOG_FUNCTION (this << enable);
-  if (!enable)
+
+  // NI API CHANGE
+  NI_LOG_DEBUG ("ApWifiMac::SetBeaconGeneration: NiWifiDevType = " << m_NiWifiMacInterface->GetNiWifiDevType());
+
+  if ((m_NiWifiMacInterface->GetNiWifiDevType() == NIAPI_AP) ||(m_NiWifiMacInterface->GetNiWifiDevType() == NIAPI_WIFI_ALL))
     {
-      m_beaconEvent.Cancel ();
+      if (!enable)
+        {
+          m_beaconEvent.Cancel ();
+        }
+      else if (enable && !m_enableBeaconGeneration)
+        {
+          m_beaconEvent = Simulator::ScheduleNow (&ApWifiMac::SendOneBeacon, this);
+        }
+      m_enableBeaconGeneration = enable;
     }
-  else if (enable && !m_enableBeaconGeneration)
-    {
-      m_beaconEvent = Simulator::ScheduleNow (&ApWifiMac::SendOneBeacon, this);
-    }
-  m_enableBeaconGeneration = enable;
 }
 
 bool
@@ -269,6 +284,8 @@ void
 ApWifiMac::ForwardDown (Ptr<const Packet> packet, Mac48Address from,
                         Mac48Address to, uint8_t tid)
 {
+  NI_LOG_DEBUG("ApWifiMac::ForwardDown: using tid = " << static_cast<uint32_t>(tid));
+
   NS_LOG_FUNCTION (this << packet << from << to << static_cast<uint32_t> (tid));
   WifiMacHeader hdr;
 
@@ -305,13 +322,33 @@ ApWifiMac::ForwardDown (Ptr<const Packet> packet, Mac48Address from,
 
   if (m_qosSupported)
     {
-      //Sanity check that the TID is valid
-      NS_ASSERT (tid < 8);
-      m_edca[QosUtilsMapTidToAc (tid)]->Queue (packet, hdr);
+      // NI API CHANGE
+      if (m_NiWifiMacInterface->GetNiApiEnable())
+        {
+          m_NiWifiMacInterface->NiStartTxCtrlDataFrame(packet, hdr);
+
+          NI_LOG_DEBUG("ApWifiMac::ForwardDown: packet incl hdr sent to NI WiFi (QoS)");
+        }
+      else
+        {
+          //Sanity check that the TID is valid
+          NS_ASSERT (tid < 8);
+          m_edca[QosUtilsMapTidToAc (tid)]->Queue (packet, hdr);
+        }
     }
   else
     {
-      m_dca->Queue (packet, hdr);
+      // NI API CHANGE
+      if (m_NiWifiMacInterface->GetNiApiEnable())
+        {
+          m_NiWifiMacInterface->NiStartTxCtrlDataFrame(packet, hdr);
+
+          NI_LOG_DEBUG("ApWifiMac::ForwardDown: packet incl hdr sent to NI WiFi (NQoS)");
+        }
+      else
+        {
+          m_dca->Queue (packet, hdr);
+        }
     }
 }
 
@@ -319,6 +356,12 @@ void
 ApWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to, Mac48Address from)
 {
   NS_LOG_FUNCTION (this << packet << to << from);
+
+  NI_LOG_DEBUG("ApWifiMac::Enqueue: to = " << to << ", from = " << from);
+
+  // NI API CHANGE: Set destination address to BROADCAST to ensure forwarding of external packets
+  to = Mac48Address("FF:FF:FF:FF:FF:FF");
+
   if (to.IsBroadcast () || m_stationManager->IsAssociated (to))
     {
       ForwardDown (packet, from, to);
@@ -328,6 +371,8 @@ ApWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to, Mac48Address from
 void
 ApWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to)
 {
+  NI_LOG_DEBUG("ApWifiMac::Enqueue: to = " << to << ", m_low->GetAddress () = " << m_low->GetAddress ());
+
   NS_LOG_FUNCTION (this << packet << to);
   //We're sending this packet with a from address that is our own. We
   //get that address from the lower MAC and make use of the
@@ -498,6 +543,8 @@ ApWifiMac::GetHtOperations (void) const
 void
 ApWifiMac::SendProbeResp (Mac48Address to)
 {
+  NI_LOG_DEBUG ("ApWifiMac::SendProbeResp: to " << to);
+
   NS_LOG_FUNCTION (this << to);
   WifiMacHeader hdr;
   hdr.SetProbeResp ();
@@ -538,16 +585,27 @@ ApWifiMac::SendProbeResp (Mac48Address to)
     }
   packet->AddHeader (probe);
 
-  //The standard is not clear on the correct queue for management
-  //frames if we are a QoS AP. The approach taken here is to always
-  //use the DCF for these regardless of whether we have a QoS
-  //association or not.
-  m_dca->Queue (packet, hdr);
+  // NI API CHANGE
+  if (m_NiWifiMacInterface->GetNiApiEnable())
+    {
+      //std::cout << "AP: Send probe!" << std::endl;
+      m_NiWifiMacInterface->NiStartTxCtrlDataFrame(packet, hdr);
+    }
+  else
+    {
+      //The standard is not clear on the correct queue for management
+      //frames if we are a QoS AP. The approach taken here is to always
+      //use the DCF for these regardless of whether we have a QoS
+      //association or not.
+      m_dca->Queue (packet, hdr);
+    }
 }
 
 void
 ApWifiMac::SendAssocResp (Mac48Address to, bool success)
 {
+  NI_LOG_DEBUG ("ApWifiMac::SendAssocResp: to " << to << ", success = " << success);
+
   NS_LOG_FUNCTION (this << to << success);
   WifiMacHeader hdr;
   hdr.SetAssocResp ();
@@ -591,16 +649,28 @@ ApWifiMac::SendAssocResp (Mac48Address to, bool success)
     }
   packet->AddHeader (assoc);
 
-  //The standard is not clear on the correct queue for management
-  //frames if we are a QoS AP. The approach taken here is to always
-  //use the DCF for these regardless of whether we have a QoS
-  //association or not.
-  m_dca->Queue (packet, hdr);
+  // NI API CHANGE
+  if (m_NiWifiMacInterface->GetNiApiEnable())
+    {
+      m_NiWifiMacInterface->NiStartTxCtrlDataFrame(packet, hdr);
+
+      NI_LOG_CONSOLE_DEBUG("WIFI.AP: Send an association response!");
+    }
+  else
+    {
+      //The standard is not clear on the correct queue for management
+      //frames if we are a QoS AP. The approach taken here is to always
+      //use the DCF for these regardless of whether we have a QoS
+      //association or not.
+      m_dca->Queue (packet, hdr);
+    }
 }
 
 void
 ApWifiMac::SendOneBeacon (void)
 {
+  NI_LOG_DEBUG ("ApWifiMac::SendOneBeacon");
+
   NS_LOG_FUNCTION (this);
   WifiMacHeader hdr;
   hdr.SetBeacon ();
@@ -641,8 +711,18 @@ ApWifiMac::SendOneBeacon (void)
     }
   packet->AddHeader (beacon);
 
-  //The beacon has it's own special queue, so we load it in there
-  m_beaconDca->Queue (packet, hdr);
+  // NI API CHANGE
+  if (m_NiWifiMacInterface->GetNiApiEnable())
+    {
+      //std::cout << "AP: Send a beacon!" << std::endl;
+      m_NiWifiMacInterface->NiStartTxCtrlDataFrame(packet, hdr);
+    }
+  else
+    {
+      //The beacon has it's own special queue, so we load it in there
+      //std::cout << "AP: Send a beacon!" << std::endl;
+      m_beaconDca->Queue (packet, hdr);
+    }
   m_beaconEvent = Simulator::Schedule (m_beaconInterval, &ApWifiMac::SendOneBeacon, this);
   
   //If a STA that does not support Short Slot Time associates,
@@ -666,12 +746,17 @@ ApWifiMac::SendOneBeacon (void)
 void
 ApWifiMac::TxOk (const WifiMacHeader &hdr)
 {
+  NI_LOG_DEBUG ("ApWifiMac::TxOk: hdr.IsAssocResp () = " << hdr.IsAssocResp ()
+                    << ", m_stationManager->IsWaitAssocTxOk (hdr.GetAddr1 ()) = " << m_stationManager->IsWaitAssocTxOk (hdr.GetAddr1 ()));
+
   NS_LOG_FUNCTION (this);
   RegularWifiMac::TxOk (hdr);
 
   if (hdr.IsAssocResp ()
       && m_stationManager->IsWaitAssocTxOk (hdr.GetAddr1 ()))
     {
+      NI_LOG_DEBUG ("ApWifiMac::TxOk: associated with address = " << hdr.GetAddr1 ());
+
       NS_LOG_DEBUG ("associated with sta=" << hdr.GetAddr1 ());
       m_stationManager->RecordGotAssocTxOk (hdr.GetAddr1 ());
     }
@@ -686,6 +771,8 @@ ApWifiMac::TxFailed (const WifiMacHeader &hdr)
   if (hdr.IsAssocResp ()
       && m_stationManager->IsWaitAssocTxOk (hdr.GetAddr1 ()))
     {
+      NI_LOG_DEBUG ("ApWifiMac::TxOk: association failed with sta=" << hdr.GetAddr1 ());
+
       NS_LOG_DEBUG ("assoc failed with sta=" << hdr.GetAddr1 ());
       m_stationManager->RecordGotAssocTxFailed (hdr.GetAddr1 ());
     }
@@ -694,6 +781,8 @@ ApWifiMac::TxFailed (const WifiMacHeader &hdr)
 void
 ApWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
 {
+  NI_LOG_DEBUG("ApWifiMac::Receive");
+
   NS_LOG_FUNCTION (this << packet << hdr);
 
   Mac48Address from = hdr->GetAddr2 ();
@@ -701,36 +790,61 @@ ApWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
   if (hdr->IsData ())
     {
       Mac48Address bssid = hdr->GetAddr1 ();
+
+      NI_LOG_DEBUG("ApWifiMac::Receive: hdr->IsData ()"
+          << ", !hdr->IsFromDs () = " << !hdr->IsFromDs ()
+          << ", hdr->IsToDs () = " << hdr->IsToDs ()
+          << ", bssid = " << bssid
+          << ", GetAddress() = " << GetAddress ()
+          << ", m_stationManager->IsAssociated (from) = " << m_stationManager->IsAssociated (from));
+
       if (!hdr->IsFromDs ()
           && hdr->IsToDs ()
           && bssid == GetAddress ()
-          && m_stationManager->IsAssociated (from))
+          && (m_stationManager->IsAssociated (from)
+          // NI API CHANGE: since WifiRemoteStationState is set by lower layer, we ignore it when using the ni api
+          || m_NiWifiMacInterface->GetNiApiEnable()))
         {
           Mac48Address to = hdr->GetAddr3 ();
+
+          NI_LOG_DEBUG("ApWifiMac::Receive: to = " << to << ", GetAddress() = " << GetAddress())
+
           if (to == GetAddress ())
             {
+              NI_LOG_DEBUG("ApWifiMac::Receive: data frame for me");
+
               NS_LOG_DEBUG ("frame for me from=" << from);
               if (hdr->IsQosData ())
                 {
                   if (hdr->IsQosAmsdu ())
                     {
+                      NI_LOG_DEBUG("ApWifiMac::Receive: QoSAmsdu, DeaggregateAmsduAndForward");
+
                       NS_LOG_DEBUG ("Received A-MSDU from=" << from << ", size=" << packet->GetSize ());
                       DeaggregateAmsduAndForward (packet, hdr);
                       packet = 0;
                     }
                   else
                     {
+                      NI_LOG_DEBUG("ApWifiMac::Receive: no QoSAmsdu, ForwardUp");
+
                       ForwardUp (packet, from, bssid);
                     }
                 }
               else
                 {
+                  NI_LOG_DEBUG("ApWifiMac::Receive: no QoS data, ForwardUp");
+
                   ForwardUp (packet, from, bssid);
                 }
             }
           else if (to.IsGroup ()
                    || m_stationManager->IsAssociated (to))
             {
+              NI_LOG_DEBUG("ApWifiMac::Receive: for group"
+                                    << ", to.IsGroup () = " << to.IsGroup ()
+                                    << ", m_stationManager->IsAssociated (to) = " << m_stationManager->IsAssociated (to));
+
               NS_LOG_DEBUG ("forwarding frame from=" << from << ", to=" << to);
               Ptr<Packet> copy = packet->Copy ();
 
@@ -739,28 +853,41 @@ ApWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
               //header...
               if (hdr->IsQosData ())
                 {
+                  NI_LOG_DEBUG("ApWifiMac::Receive: QoS data, ForwardDown");
+
                   ForwardDown (packet, from, to, hdr->GetQosTid ());
                 }
               else
                 {
+                  NI_LOG_DEBUG("ApWifiMac::Receive: no QoS data, ForwardDown");
+
                   ForwardDown (packet, from, to);
                 }
+
+              NI_LOG_DEBUG("ApWifiMac::Receive: for group, ForwardUp");
+
               ForwardUp (copy, from, to);
             }
           else
             {
+              NI_LOG_DEBUG("ApWifiMac::Receive: ForwardUp");
+
               ForwardUp (packet, from, to);
             }
         }
       else if (hdr->IsFromDs ()
                && hdr->IsToDs ())
         {
+          NI_LOG_DEBUG("ApWifiMac::Receive: AP-to-AP frame, drop packet");
+
           //this is an AP-to-AP frame
           //we ignore for now.
           NotifyRxDrop (packet);
         }
       else
         {
+          NI_LOG_DEBUG("ApWifiMac::Receive: frame not targeted to AP, drop packet");
+
           //we can ignore these frames since
           //they are not targeted at the AP
           NotifyRxDrop (packet);
@@ -769,16 +896,24 @@ ApWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
     }
   else if (hdr->IsMgt ())
     {
+      NI_LOG_DEBUG("ApWifiMac::Receive: hdr->IsMgt ()");
+
       if (hdr->IsProbeReq ())
         {
+          NI_LOG_DEBUG("ApWifiMac::Receive: hdr->IsProbeReq ()");
+
           NS_ASSERT (hdr->GetAddr1 ().IsBroadcast ());
           SendProbeResp (from);
           return;
         }
       else if (hdr->GetAddr1 () == GetAddress ())
         {
+          NI_LOG_DEBUG("ApWifiMac::Receive: hdr->GetAddr1 () == GetAddress ()");
+
           if (hdr->IsAssocReq ())
             {
+              NI_LOG_CONSOLE_DEBUG("WIFI.AP: Received an association request!");
+
               //first, verify that the the station's supported
               //rate set is compatible with our Basic Rate set
               MgtAssocRequestHeader assocReq;
@@ -869,6 +1004,8 @@ ApWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
                 }
               if (problem)
                 {
+                  NI_LOG_DEBUG("ApWifiMac::Receive: one of the Basic Rate set mode is not supported, SendAssocResp");
+
                   //One of the Basic Rate set mode is not
                   //supported by the station. So, we return an assoc
                   //response with an error status.
@@ -925,11 +1062,15 @@ ApWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
                     }
                   // send assoc response with success status.
                   SendAssocResp (hdr->GetAddr2 (), true);
+
+                  NI_LOG_DEBUG("ApWifiMac::Receive: SendAssocResp with success");
                 }
               return;
             }
           else if (hdr->IsDisassociation ())
             {
+              NI_LOG_DEBUG("ApWifiMac::Receive: hdr->IsDisassociation ()");
+
               m_stationManager->RecordDisassociated (from);
               for (std::list<Mac48Address>::iterator i = m_staList.begin (); i != m_staList.end (); i++)
               {
@@ -970,6 +1111,8 @@ void
 ApWifiMac::DeaggregateAmsduAndForward (Ptr<Packet> aggregatedPacket,
                                        const WifiMacHeader *hdr)
 {
+  NI_LOG_DEBUG ("ApWifiMac::DeaggregateAmsduAndForward");
+
   NS_LOG_FUNCTION (this << aggregatedPacket << hdr);
   MsduAggregator::DeaggregatedMsdus packets =
     MsduAggregator::Deaggregate (aggregatedPacket);
@@ -987,6 +1130,9 @@ ApWifiMac::DeaggregateAmsduAndForward (Ptr<Packet> aggregatedPacket,
           Mac48Address from = (*i).second.GetSourceAddr ();
           Mac48Address to = (*i).second.GetDestinationAddr ();
           NS_LOG_DEBUG ("forwarding QoS frame from=" << from << ", to=" << to);
+
+          NI_LOG_DEBUG ("ApWifiMac::DeaggregateAmsduAndForward: ForwardDown");
+
           ForwardDown ((*i).first, from, to, hdr->GetQosTid ());
         }
     }
@@ -995,24 +1141,33 @@ ApWifiMac::DeaggregateAmsduAndForward (Ptr<Packet> aggregatedPacket,
 void
 ApWifiMac::DoInitialize (void)
 {
+  NI_LOG_DEBUG("ApWifiMac::DoInitialize");
+
   NS_LOG_FUNCTION (this);
-  m_beaconDca->Initialize ();
-  m_beaconEvent.Cancel ();
-  if (m_enableBeaconGeneration)
+
+  // NI API CHANGE: start beacons only for the ns-3 instantiation that shall run as AP
+  if ((m_NiWifiMacInterface->GetNiWifiDevType() == NIAPI_AP) ||(m_NiWifiMacInterface->GetNiWifiDevType() == NIAPI_WIFI_ALL))
     {
-      if (m_enableBeaconJitter)
+      m_beaconDca->Initialize ();
+      m_beaconEvent.Cancel ();
+      if (m_enableBeaconGeneration)
         {
-          int64_t jitter = m_beaconJitter->GetValue (0, m_beaconInterval.GetMicroSeconds ());
-          NS_LOG_DEBUG ("Scheduling initial beacon for access point " << GetAddress () << " at time " << jitter << " microseconds");
-          m_beaconEvent = Simulator::Schedule (MicroSeconds (jitter), &ApWifiMac::SendOneBeacon, this);
+          if (m_enableBeaconJitter)
+            {
+              int64_t jitter = m_beaconJitter->GetValue (0, m_beaconInterval.GetMicroSeconds ());
+              NS_LOG_DEBUG ("Scheduling initial beacon for access point " << GetAddress () << " at time " << jitter << " microseconds");
+              m_beaconEvent = Simulator::Schedule (MicroSeconds (jitter), &ApWifiMac::SendOneBeacon, this);
+              NI_LOG_DEBUG("ApWifiMac::DoInitialize: scheduled SendOneBeacon with jitter = " << jitter);
+            }
+          else
+            {
+              NS_LOG_DEBUG ("Scheduling initial beacon for access point " << GetAddress () << " at time 0");
+              m_beaconEvent = Simulator::ScheduleNow (&ApWifiMac::SendOneBeacon, this);
+               NI_LOG_DEBUG("ApWifiMac::DoInitialize: scheduled SendOneBeacon without jitter");
+            }
         }
-      else
-        {
-          NS_LOG_DEBUG ("Scheduling initial beacon for access point " << GetAddress () << " at time 0");
-          m_beaconEvent = Simulator::ScheduleNow (&ApWifiMac::SendOneBeacon, this);
-        }
-    }
-  RegularWifiMac::DoInitialize ();
+      RegularWifiMac::DoInitialize ();
+   }
 }
 
 bool

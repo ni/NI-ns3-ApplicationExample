@@ -38,6 +38,14 @@ NS_LOG_COMPONENT_DEFINE ("WallClockSynchronizer");
 
 NS_OBJECT_ENSURE_REGISTERED (WallClockSynchronizer);
 
+// NI API CHANGE
+static uint64_t (*g_niCalcNormalizedRealtimeCb) (uint64_t, uint64_t) = 0; // callback for NI timing calculation, based on FPGA timing
+// set call back for NI timing calculation handler
+void WallClockSynchronizerSetCalcNormalizedRealtimeCb (uint64_t (*cb) (uint64_t, uint64_t)) {
+  g_niCalcNormalizedRealtimeCb = cb;
+}
+
+
 TypeId 
 WallClockSynchronizer::GetTypeId (void)
 {
@@ -383,7 +391,17 @@ uint64_t
 WallClockSynchronizer::GetNormalizedRealtime (void)
 {
   NS_LOG_FUNCTION (this);
-  return GetRealtime () - m_realtimeOriginNano;
+  // NI API CHANGE
+  // if call back for timing calculation is registered, return normalized realtime based on NI FPGA timing,
+  // otherwise use regular NS3 implementation
+  if (g_niCalcNormalizedRealtimeCb != 0)
+    {
+      return g_niCalcNormalizedRealtimeCb(GetRealtime (), m_realtimeOriginNano);
+    }
+  else
+    {
+      return GetRealtime () - m_realtimeOriginNano;
+    }
 }
 
 void
@@ -419,5 +437,7 @@ WallClockSynchronizer::TimevalAdd (
       result->tv_usec %= US_PER_SEC;
     }
 }
+
+
 
 } // namespace ns3

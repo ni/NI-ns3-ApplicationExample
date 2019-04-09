@@ -1,0 +1,48 @@
+#---------------------------------------------
+# Core parameters
+#---------------------------------------------
+
+ns3_base_dir="/home/root/ns-3.26/"
+
+# ns-3 simulation settings
+packetSize="1000"
+numPackets="500"
+interPacketInterval="500"
+simTime="60"
+transmTime="10"
+
+# General NI API settings
+niApiEnableLogging="\"true\""
+niApiEnableTapBridge="\"false\""
+# Wifi NI API settings
+niApiWifiEnabled="\"true\""
+niApiWifiLoopbackEnabled="\"true\""
+niApiWifiMcs="5"
+# IP config for STA1 in Adhoc or AP in Infra mode
+niApiWifiSta1RemoteIpAddrTx="127.0.0.1"
+niApiWifiSta1RemotePortTx="12702"
+niApiWifiSta1LocalPortRx="12701"
+# IP config for STA2 in Adhoc or STA in Infra mode
+niApiWifiSta2RemoteIpAddrTx="127.0.0.1"
+niApiWifiSta2RemotePortTx="12701"
+niApiWifiSta2LocalPortRx="12702"
+# MAC config 
+niApiWifiSta1MacAddr="46:6F:4B:75:6D:61"
+niApiWifiSta2MacAddr="46:6F:4B:75:6D:62"
+niApiWifiBssidMacAddr="46:6F:4B:75:6D:61"
+
+# LTE NI API settings
+niApiLteEnabled="\"false\""
+niApiLteLoopbackEnabled="\"false\""
+
+# Server configuration: 1=LAN node, 2=UE terminal, 3= UE terminal but Wifi netdevice
+cientServerConfig="2"
+
+# 0= w/o LWA, 1= w/ split LWA LTE/Wifi, 2= w/ full LWA over Wifi 
+lwaactivate="0"
+# 0= w/o IPSEC, 1= w/ IPSEC
+lwipactivate="1"
+
+# Enable/disable Remote Control engine
+niRemoteControlEnable="\"false\""
+#---------------------------------------------

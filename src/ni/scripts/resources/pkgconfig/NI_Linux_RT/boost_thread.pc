@@ -1,0 +1,7 @@
+libdir=/usr/lib/
+
+Name: Boost System
+Description: 
+Version: 
+Libs: -L${libdir} -lboost_thread
+Cflags:

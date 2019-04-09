@@ -30,6 +30,8 @@
 #include "amsdu-subframe-header.h"
 #include "capability-information.h"
 
+#include "ns3/ni-wifi-mac-interface.h"
+
 namespace ns3  {
 
 class MgtAddBaRequestHeader;
@@ -200,6 +202,9 @@ private:
 
   TracedCallback<Mac48Address> m_assocLogger;
   TracedCallback<Mac48Address> m_deAssocLogger;
+
+  // NI API CHANGE
+  Ptr<NiWifiMacInterface> m_NiWifiMAcInterface;
 };
 
 } //namespace ns3
