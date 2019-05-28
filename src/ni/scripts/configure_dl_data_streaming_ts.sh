@@ -13,7 +13,7 @@ TS_LTE_TAP_BRIDGE_PORT=8990
 TS_WIFI_TAP_BRIDGE_PORT=8991
 TS_LWX_TAP_BRIDGE_PORT=9
 # terminal host pc specific settings
-TS_HOST_PC_IP=192.168.2.125
+TS_HOST_PC_IP=10.89.14.21
 TS_HOST_PC_PORT_LTE=8990
 TS_HOST_PC_PORT_WIFI=8991
 
@@ -43,8 +43,11 @@ ifconfig NIAPI_TapUE $TS_LTE_TAP_BRIDGE netmask 255.255.255.0
 ifconfig NIAPI_TapSTA $TS_WIFI_TAP_BRIDGE netmask 255.255.255.0
 sleep 5
 
-echo "--> start packet forwarding (incoming packets from TS (UE) tap bridge to TS host PC"
-python traffic_fwd.py $TS_LTE_TAP_BRIDGE $TS_WIFI_TAP_BRIDGE_PORT $TS_HOST_PC_IP $TS_HOST_PC_PORT_LTE
+echo "--> start packet forwarding (incoming packets from TS (LTE UE) tap bridge to TS host PC)"
+python traffic_fwd.py $TS_LTE_TAP_BRIDGE $TS_LTE_TAP_BRIDGE_PORT $TS_HOST_PC_IP $TS_HOST_PC_PORT_LTE &
 
-echo "--> start packet forwarding (incoming packets from TS (STA) tap bridge to TS host PC"
-python traffic_fwd.py $TS_WIFI_TAP_BRIDGE $TS_LWX_TAP_BRIDGE_PORT $TS_HOST_PC_IP $TS_HOST_PC_PORT_WIFI
+echo "--> start packet forwarding (incoming packets from TS (WIFI STA over LWA/LWIP) tap bridge to TS host PC)"
+python traffic_fwd.py $TS_WIFI_TAP_BRIDGE $TS_LWX_TAP_BRIDGE_PORT $TS_HOST_PC_IP $TS_HOST_PC_PORT_WIFI &
+
+echo "--> start packet forwarding (incoming packets from TS (WIFI STA) tap bridge to TS host PC)"
+python traffic_fwd.py $TS_WIFI_TAP_BRIDGE $TS_WIFI_TAP_BRIDGE_PORT $TS_HOST_PC_IP $TS_HOST_PC_PORT_WIFI &

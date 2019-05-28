@@ -8,11 +8,11 @@ debug:	configure_debug compile
 
 # MODIFY HERE --------------------------------------------------------------------------------------
 configure:
-	$(CXXOPTIONS) ./waf configure -d optimized --enable-examples 
+	$(CXXOPTIONS) ./waf configure -d optimized --enable-examples --enable-sudo
 configure_debug:
-	$(CXXOPTIONS) ./waf configure -d debug --enable-examples
+	$(CXXOPTIONS) ./waf configure -d debug --enable-examples --enable-sudo
 configure_tests:
-	$(CXXOPTIONS) ./waf configure -d debug --enable-examples --enable-tests
+	$(CXXOPTIONS) ./waf configure -d debug --enable-examples --enable-tests --enable-sudo
 # MODIFY HERE --------------------------------------------------------------------------------------
 
 # free free to change this part to suit your requirements

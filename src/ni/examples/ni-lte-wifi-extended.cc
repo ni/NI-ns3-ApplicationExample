@@ -286,13 +286,13 @@ int main (int argc, char *argv[]){
   bool niRemoteControlEnable = false;
   // Enable TapBridge as data source and data sink
   bool niApiEnableTapBridge = false;
-  // chose whether ns-3 instance should run as NIAPI_BS or NIAPI_TER
+  // chose whether ns-3 instance should run as NIAPI_BS or NIAPI_TS, NIAPI_BSTS used for simulation mode
   std::string niApiDevMode = "NIAPI_BSTS";
 
   // ====================
   // NI API LTE parameter
 
-  // Choose between NIAPI_eNB or NIAPI_UE mode
+  // Choose between NIAPI_eNB or NIAPI_UE mode, NIAPI_ALL used for simulation mode
   std::string niApiLteDevMode  = "NIAPI_ALL";
   // Activate NIAPI for LTE
   bool niApiLteEnabled         = false;
@@ -411,7 +411,7 @@ int main (int argc, char *argv[]){
       // ns-3 instance is configures as BS and TS- for debugging if only spectrum phy shall be bypassed
       niApiLteDevMode  = "NIAPI_ALL";
       niApiWifiDevMode = "NIAPI_ALL";
-      simStationType   = "BS";
+      simStationType   = "BSTS";
   } else {
       NS_FATAL_ERROR ("niApiDevMode " << niApiDevMode << " not allowed");
   }
@@ -420,57 +420,58 @@ int main (int argc, char *argv[]){
   // TODO-NI: replace cout by NI_LOG_CONSOLE_INFO
   std::cout << std::endl;
   std::cout << "-------- NS-3 Configuration -------------" << std::endl;
-  std::cout << "Selected WiFi mode: \t" << niApiWifiConfigMode << std::endl;
-  std::cout << "Running WiFi node as: \t";
+  std::cout << "Selected WiFi mode:    " << niApiWifiConfigMode << std::endl;
+  std::cout << "Running WiFi node as:  ";
   if (niApiWifiDevMode == "NIAPI_ALL") std::cout << "AP and STA" << std::endl;
   else if (niApiWifiDevMode == "NIAPI_AP")    std::cout << "AP" << std::endl;
   else if (niApiWifiDevMode == "NIAPI_STA")   std::cout << "STA" << std::endl;
 
-  std::cout << "WiFi API: \t\t";
+  std::cout << "WiFi API:              ";
   if (niApiWifiEnabled == true) std::cout << "enabled" << std::endl;
   else                          std::cout << "disabled" << std::endl;
 
-  std::cout << "WiFI UDP Loopback: \t";
+  std::cout << "WiFI UDP Loopback:     ";
   if (niApiWifiLoopbackEnabled == true) std::cout << "enabled" << std::endl;
   else                                  std::cout << "disabled" << std::endl;
 
-  std::cout << "Running LTE node as: \t";
+  std::cout << "Running LTE node as:   ";
   if (niApiLteDevMode == "NIAPI_ALL") std::cout << "ENB and UE" << std::endl;
   else if (niApiLteDevMode == "NIAPI_ENB")  std::cout << "ENB" << std::endl;
   else if (niApiLteDevMode == "NIAPI_UE")   std::cout << "UE" << std::endl;
 
-  std::cout << "LTE API: \t\t";
+  std::cout << "LTE API:               ";
   if (niApiLteEnabled == true) std::cout << "enabled" << std::endl;
   else                         std::cout << "disabled" << std::endl;
 
-  std::cout << "LTE UDP Loopback: \t";
+  std::cout << "LTE UDP Loopback:      ";
   if (niApiLteLoopbackEnabled == true) std::cout << "enabled" << std::endl;
   else                                 std::cout << "disabled" << std::endl;
 
-  std::cout << "TapBridge: \t\t";
+  std::cout << "TapBridge:             ";
   if (niApiEnableTapBridge == true) std::cout << "enabled" << std::endl;
   else                              std::cout << "disabled" << std::endl;
 
-  std::cout << "Logging: \t\t";
+  std::cout << "Logging:               ";
   if (niApiEnableLogging == true) std::cout << "enabled" << std::endl;
   else                            std::cout << "disabled" << std::endl;
 
-  std::cout << "Remote control engine: \t";
-    if (niRemoteControlEnable == true) std::cout << "enabled" << std::endl;
-    else                            std::cout << "disabled" << std::endl;
+  std::cout << "Remote control engine: ";
+  if (niRemoteControlEnable == true) std::cout << "enabled" << std::endl;
+  else                            std::cout << "disabled" << std::endl;
 
-  std::cout << "LWA: \t\t\t";
+  std::cout << "LWA:                   ";
   if (lwaactivate==1)      std::cout << "partial (LTE+WiFi) activated" << std::endl;
   else if (lwaactivate==2) std::cout << "activated" << std::endl;
   else                     std::cout << "not activated" << std::endl;
 
-  std::cout << "LWIP: \t\t\t";
+  std::cout << "LWIP:                  ";
   if (lwipactivate==1) std::cout << "activated" << std::endl;
   else                 std::cout << "not activated" << std::endl;
 
-  std::cout << "Client Server Config: \t" << cientServerConfig << std::endl;
+  std::cout << "Client Server Config:  " << cientServerConfig << std::endl;
 
-  std::cout << "NI Module Version: \t" << NI_MODULE_VERSION << std::endl;
+  std::cout << "NI Module Version:     " << NI_MODULE_VERSION << std::endl;
+  std::cout << "Required AFW Version:  " << NI_AFW_VERSION << std::endl;
 
   std::cout << std::endl;
 
@@ -604,6 +605,8 @@ int main (int argc, char *argv[]){
   Ipv4Address p2pWifiIpSubnet = "10.1.3.0";
   Ipv4Address p2pLteIpSubnet  = "10.1.4.0";
   Ipv4Address UeIpSubnet      = "7.0.0.0";
+  Ipv4Address xwLwaSubnet     = "20.1.2.0";
+  Ipv4Address xwLwipSubnet    = "20.1.3.0";
 
   // create wifi p2p link to mobile network gateway
   ipAddressHelp.SetBase (p2pWifiIpSubnet, IpMask);
@@ -654,9 +657,9 @@ int main (int argc, char *argv[]){
 
   // assign ip adresses to lwa / lwip links
   Ipv4AddressHelper XwAddress;
-  XwAddress.SetBase ("20.1.2.0", "255.255.255.0");
+  XwAddress.SetBase (xwLwaSubnet, "255.255.255.0");
   Ipv4InterfaceContainer xwLwaIpInterfaces = XwAddress.Assign (xwLwaDevices);
-  XwAddress.SetBase ("20.1.3.0", "255.255.255.0");
+  XwAddress.SetBase (xwLwipSubnet, "255.255.255.0");
   Ipv4InterfaceContainer xwLwipIpInterfaces = XwAddress.Assign (xwLwipDevices);
 
   // create socket on lwaap socket to enable transmission of lwa packets
@@ -855,6 +858,8 @@ int main (int argc, char *argv[]){
   std::cout << "LTE Net GW IP Addr         = " << p2pLteIpInterfaces.GetAddress(1) << std::endl;
   std::cout << "LTE EPC PGW IP Addr        = " << PacketGwNode->GetObject<Ipv4> ()->GetAddress (1,0).GetLocal () << std::endl;
   std::cout << "LTE UE#1 IP Addr           = " << ueIpInterfaces.GetAddress(0) << std::endl;
+  std::cout << "Xw LWA IP Addr             = " << xwLwaIpInterfaces.GetAddress (0) << std::endl;
+  std::cout << "Xw LWIP IP Addr            = " << xwLwipIpInterfaces.GetAddress (0) << std::endl;
   std::cout << "Client IP Addr             = " << ClientIpAddr << std::endl;
   std::cout << "Server IP Addr             = " << ServerIPAddr << std::endl;
   std::cout << std::endl;

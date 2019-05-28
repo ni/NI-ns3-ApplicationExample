@@ -23,6 +23,18 @@
 #define SRC_NI_MODEL_COMMON_NI_COMMON_CONSTANTS_H_
 
 
+#define NI_MODULE_VERSION_MAJOR 1
+#define NI_MODULE_VERSION_MINOR 1
+#define NI_MODULE_VERSION_FIX   0
+
+#define NI_MODULE_VERSION (std::to_string(NI_MODULE_VERSION_MAJOR) + "." + std::to_string(NI_MODULE_VERSION_MINOR) + "." + std::to_string(NI_MODULE_VERSION_FIX))
+
+#define NI_AFW_VERSION_MAJOR 2
+#define NI_AFW_VERSION_MINOR 2
+
+#define NI_AFW_VERSION (std::to_string(NI_AFW_VERSION_MAJOR) + "." + std::to_string(NI_AFW_VERSION_MINOR))
+
+
 #define NI_COMMON_CONST_MAX_PAYLOAD_SIZE 10240 // bytes
 
 

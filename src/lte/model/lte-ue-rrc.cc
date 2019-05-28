@@ -2853,7 +2853,10 @@ LteUeRrc::SwitchToState (State newState)
   m_stateTransitionTrace (m_imsi, m_cellId, m_rnti, oldState, newState);
 
   NI_LOG_CONSOLE_DEBUG ("LTE.UE.RRC: " << ToString (oldState) << " --> " << ToString (newState) << " (IMSI=" << m_imsi << ", RNTI=" << m_rnti << ")");
-
+  if ((!NI_LOG_ENABLED) && oldState == IDLE_CONNECTING && newState == CONNECTED_NORMALLY)
+    {
+      NI_LOG_CONSOLE_INFO("UE RRC CONNECTED");
+    }
   switch (newState)
     {
     case IDLE_START:

@@ -24,8 +24,9 @@
 
 #include <cstdio>
 
-#include <ns3/object.h>
-#include <ns3/system-thread.h>
+#include "ns3/object.h"
+#include "ns3/system-thread.h"
+//#include "ns3/ni.h"
 #include "ni-common-constants.h"
 #include "ns3/ni-l1-l2-api-lte.h"
 
@@ -91,19 +92,31 @@ namespace ns3 {
 
     // pipe names are defined by the LTE Application Framework
     // phy timing ind
+#if (NI_AFW_VERSION_MAJOR == 2 && NI_AFW_VERSION_MINOR == 2)
     char* m_pipe_name_1 = (char*)"/tmp/api_transport_0_pipe";
+#else
+    char* m_pipe_name_1 = (char*)"/tmp/api_transport_0-0_pipe";
+#endif
     int32_t m_fd1 = -1;
     fd_set m_readFds1;
     int32_t m_fdMax1 = 0;
     uint8_t*  m_pBufU8Pipe1;
     uint32_t m_bufOffsetU8Pipe1 = 0;
     // phy tx cfg/payl
+#if (NI_AFW_VERSION_MAJOR == 2 && NI_AFW_VERSION_MINOR == 2)
     char* m_pipe_name_2 = (char*)"/tmp/api_transport_1_pipe";
+#else
+    char* m_pipe_name_2 = (char*)"/tmp/api_transport_0-1_pipe";
+#endif
     int32_t m_fd2 = -1;
     uint8_t*  m_pBufU8Pipe2;
     uint32_t m_bufOffsetU8Pipe2 = 0;
     // phy rx ind
+#if (NI_AFW_VERSION_MAJOR == 2 && NI_AFW_VERSION_MINOR == 2)
     char* m_pipe_name_3 = (char*)"/tmp/api_transport_2_pipe";
+#else
+    char* m_pipe_name_3 = (char*)"/tmp/api_transport_0-2_pipe";
+#endif
     int32_t m_fd3 = -1;
     fd_set m_readFds3;
     int32_t m_fdMax3 = 0;

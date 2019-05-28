@@ -1,0 +1,17 @@
+Changelog - NI ns3 Application Example
+
+======================
+v1.1.0        24.05.19
+======================
+
+- FIX: traffic forwarding scripts
+- CLEANUP: comments and print outs
+
+
+
+======================
+v1.0.0        09.04.19
+======================
+
+- inital release
+

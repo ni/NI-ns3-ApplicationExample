@@ -2,7 +2,7 @@
 
 # Setup
 # -------------------------------     -----------------     -------------------------      --------------
-# | mmWave UD                   |     | BS            |     | TS                     |     | TS_HOST_PC |
+# | DATA SOURCE PC              |     | BS            |     | TS                     |     | TS_HOST_PC |
 # | DATA_SRC_IP / DATA_SRC_PORT | --> | BS_TAP_BRIDGE | --> | TS_LTE/WIFI_TAP_BRIDGE | --> |            |
 # ------------------------------- ETH ----------------- OTA -------------------------- ETH --------------
 
@@ -17,9 +17,12 @@ TS_LTE_TAP_BRIDGE=7.0.0.2
 TS_WIFI_TAP_BRIDGE=10.1.2.2
 TS_LTE_TAP_BRIDGE_PORT=8990
 TS_WIFI_TAP_BRIDGE_PORT=8991
-# external data e.g from mmWave UD (back haul link)
-DATA_SRC_IP=192.168.2.140
-DATA_SRC_PORT=60000
+# external data e.g from mmWave UD (back haul link) or external PC
+DATA_SRC_IP=10.89.14.41
+DATA_SRC_PORT_LTE=60000
+DATA_SRC_PORT_WIFI=60001
+# ip and port where external data is received (BS eth0 IP)
+DATA_RX_IP=10.89.14.33
 # needs to be false if NS-3 is started from LabVIEW
 START_FROM_CMD_LINE=false
 
@@ -53,5 +56,8 @@ echo "--> add network route in order to route all packets addressed to subnet $L
 # /24 means subnetmask of 255.255.255.0
 route add -net $LTE_SUBNET/24 gw $MOBILE_NETWORK_GATEWAY dev NIAPI_TapENB
 
-echo "--> start packet forwarding (incoming packets from $DATA_SRC_IP will be forwarded to ns-3 TS tap bridge)"
-python traffic_fwd.py $DATA_SRC_IP $DATA_SRC_PORT $TS_LTE_TAP_BRIDGE $TS_LTE_TAP_BRIDGE_PORT
+echo "--> start packet forwarding (incoming packets from $DATA_SRC_IP received on $DATA_RX_IP/$DATA_SRC_PORT_LTE will be forwarded to ns-3 TS LTE tap bridge $TS_LTE_TAP_BRIDGE/$TS_LTE_TAP_BRIDGE_PORT)"
+python traffic_fwd.py $DATA_RX_IP $DATA_SRC_PORT_LTE $TS_LTE_TAP_BRIDGE $TS_LTE_TAP_BRIDGE_PORT &
+
+echo "--> start packet forwarding (incoming packets from $DATA_SRC_IP received on $DATA_RX_IP/$DATA_SRC_PORT_WIFI will be forwarded to ns-3 TS WIFI tap bridge $TS_WIFI_TAP_BRIDGE/$TS_WIFI_TAP_BRIDGE_PORT)"
+python traffic_fwd.py $DATA_RX_IP $DATA_SRC_PORT_WIFI $TS_WIFI_TAP_BRIDGE $TS_WIFI_TAP_BRIDGE_PORT &

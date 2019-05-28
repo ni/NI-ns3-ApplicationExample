@@ -1252,6 +1252,10 @@ UeManager::SwitchToState (State newState)
 
   NI_LOG_INFO ("UeManager::UeManager::SwitchToState: imsi=" << m_imsi << " rnti=" << m_rnti << " " << ToString (oldState) << " --> " << ToString (newState) );
   NI_LOG_CONSOLE_DEBUG ("LTE.ENB.RRC: " << ToString (oldState) << " --> " << ToString (newState) << " (IMSI=" << m_imsi << ", RNTI=" << m_rnti << ")");
+  if ((!NI_LOG_ENABLED) && oldState == CONNECTION_RECONFIGURATION && newState == CONNECTED_NORMALLY)
+    {
+      NI_LOG_CONSOLE_INFO("ENB RRC CONNECTED");
+    }
 
   switch (newState)
     {

@@ -168,6 +168,7 @@ typedef struct sNiLogInfo {
     std::cout << msg << std::endl;\
     fflush( stdout );
 
+#define NI_LOG_ENABLED ({bool retval; retval = g_NiLogging.IsEnable(); retval;})
 
 /**
  * Use \ref Initialize NI logging entity

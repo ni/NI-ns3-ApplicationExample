@@ -191,6 +191,9 @@ int main (int argc, char *argv[])
   if (niApiEnableLogging == true) std::cout << "enabled" << std::endl;
   else                            std::cout << "disabled" << std::endl;
 
+  std::cout << "NI Module Version: \t" << NI_MODULE_VERSION << std::endl;
+  std::cout << "Required AFW Version: \t" << NI_AFW_VERSION << std::endl;
+
   // write different log files for each STA
   std::string stationType = "default";
 

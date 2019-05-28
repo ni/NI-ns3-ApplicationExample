@@ -94,14 +94,14 @@ main (int argc, char *argv[])
    bool niRemoteControlEnable = false;
    // Enable TapBridge as data source and data sink
    bool niApiEnableTapBridge = false;
-   // chose whether ns-3 instance should run as NIAPI_BS or NIAPI_TS
+   // chose whether ns-3 instance should run as NIAPI_BS or NIAPI_TS, NIAPI_BSTS used for simulation mode
    std::string niApiDevMode = "NIAPI_BSTS";
 
    // ====================
    // NI API LTE parameter
 
-  // Choose between NIAPI_eNB or NIAPI_UE mode
-  std::string niApiLteDevMode = "NIAPI_eNB";
+  // Choose between NIAPI_eNB or NIAPI_UE mode, NIAPI_ALL used for simulation mode
+  std::string niApiLteDevMode = "NIAPI_ALL";
   // Activate NIAPI for LTE
   bool niApiLteEnabled = false;
   // Activate NIAPI loopback mode for LTE
@@ -146,7 +146,7 @@ main (int argc, char *argv[])
   } else if (niApiDevMode == "NIAPI_BSTS") {
       // ns-3 instance is configures as BS and TS- for debugging if only spectrum phy shall be bypassed
       niApiLteDevMode  = "NIAPI_ALL";
-      simStationType   = "BS";
+      simStationType   = "BSTS";
   } else {
       NS_FATAL_ERROR ("niApiDevMode " << niApiDevMode << " not allowed");
   }
@@ -156,30 +156,29 @@ main (int argc, char *argv[])
   std::cout << std::endl;
   std::cout << "-------- NS-3 Configuration -------------" << std::endl;
 
-
-  std::cout << "Running LTE node as: \t";
+  std::cout << "Running LTE node as:  ";
   if (niApiLteDevMode == "NIAPI_ALL") std::cout << "ENB and UE" << std::endl;
   else if (niApiLteDevMode == "NIAPI_ENB")  std::cout << "ENB" << std::endl;
   else if (niApiLteDevMode == "NIAPI_UE")   std::cout << "UE" << std::endl;
 
-  std::cout << "LTE API: \t\t";
+  std::cout << "LTE API:              ";
   if (niApiLteEnabled == true) std::cout << "enabled" << std::endl;
   else                         std::cout << "disabled" << std::endl;
 
-  std::cout << "LTE UDP Loopback: \t";
+  std::cout << "LTE UDP Loopback:     ";
   if (niApiLteLoopbackEnabled == true) std::cout << "enabled" << std::endl;
   else                                 std::cout << "disabled" << std::endl;
 
-  std::cout << "TapBridge: \t\t";
+  std::cout << "TapBridge:            ";
   if (niApiEnableTapBridge == true) std::cout << "enabled" << std::endl;
   else                              std::cout << "disabled" << std::endl;
 
-  std::cout << "Logging: \t\t";
+  std::cout << "Logging:              ";
   if (niApiEnableLogging == true) std::cout << "enabled" << std::endl;
   else                            std::cout << "disabled" << std::endl;
-  std::cout << "disabled" << std::endl;
 
-  std::cout << "NI Module Version: \t" << NI_MODULE_VERSION << std::endl;
+  std::cout << "NI Module Version:    " << NI_MODULE_VERSION << std::endl;
+  std::cout << "Required AFW Version: " << NI_AFW_VERSION << std::endl;
 
   std::cout << std::endl;
 
@@ -231,7 +230,7 @@ main (int argc, char *argv[])
   Ipv4Mask                IpMask = "255.255.255.0";
   Ipv4StaticRoutingHelper ipv4RoutingHelper;
 
-  // main router node to connect lan with wifi and lte mobile networks
+  // main router node to connect lan with lte mobile network
    Ptr<Node> MobileNetworkGwNode = CreateObject<Node> ();
    // lan nodes connected via ethernet - added mobile network gateway here
    NodeContainer LanNodes;
@@ -319,7 +318,7 @@ main (int argc, char *argv[])
    ipAddressHelp.SetBase (p2pLteIpSubnet, IpMask);
    Ipv4InterfaceContainer p2pLteIpInterfaces = ipAddressHelp.Assign (p2pLteDevices);
 
-   // lte & wifi channel / mobility  model
+   // lte channel / mobility  model
    MobilityHelp.Install (enbNodes);
    MobilityHelp.Install (ueNodes);
 

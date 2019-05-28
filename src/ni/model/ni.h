@@ -22,13 +22,8 @@
 #ifndef NI_H
 #define NI_H
 
-#define NI_MODULE_VERSION_MAJOR 0
-#define NI_MODULE_VERSION_MINOR 1
-#define NI_MODULE_VERSION_FIX   0
-
-#define NI_MODULE_VERSION (std::to_string(NI_MODULE_VERSION_MAJOR) + "." + std::to_string(NI_MODULE_VERSION_MINOR) + "." + std::to_string(NI_MODULE_VERSION_FIX))
-
 // COMMON
+#include "ns3/ni-common-constants.h"
 #include "ns3/ni-l1-l2-api.h"
 #include "ns3/ni-logging.h"
 #include "ns3/ni-utils.h"
@@ -37,12 +32,12 @@
 #include "ns3/ni-pipe-transport.h"
 
 // LTE
-#include "ni-lte-constants.h"
+#include "ns3/ni-lte-constants.h"
 #include "ns3/ni-lte-sdr-timing-sync.h"
 #include "ns3/ni-lte-phy-interface.h"
 
 // WIFI
-#include "ni-wifi-constants.h"
+#include "ns3/ni-wifi-constants.h"
 #include "ns3/ni-wifi-api-msg-types.h"
 #include "ns3/ni-wifi-api-msg-helper.h"
 #include "ns3/ni-wifi-api-msg-handler.h"
