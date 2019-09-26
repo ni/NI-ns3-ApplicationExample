@@ -1,6 +1,7 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, University of Padova, Dep. of Information Engineering, SIGNET lab
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,6 +18,10 @@
  *
  * Author: Jaume Nin <jnin@cttc.cat>
  *         Nicola Baldo <nbaldo@cttc.cat>
+ *
+ * Modified by Michele Polese <michele.polese@gmail.com>
+ *     (support for RRC_CONNECTED->RRC_IDLE state transition + support for real S1AP link)
+ * 
  */
 
 
@@ -30,6 +35,7 @@
 #include "epc-gtpu-header.h"
 #include "eps-bearer-tag.h"
 
+#include "ns3/ni-logging.h"
 
 namespace ns3 {
 
@@ -63,7 +69,16 @@ EpcEnbApplication::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::EpcEnbApplication")
     .SetParent<Object> ()
-    .SetGroupName("Lte");
+    .SetGroupName("Lte")
+    .AddTraceSource ("RxFromEnb",
+                     "Receive data packets from LTE Enb Net Device",
+                     MakeTraceSourceAccessor (&EpcEnbApplication::m_rxLteSocketPktTrace),
+                     "ns3::EpcEnbApplication::RxTracedCallback")
+    .AddTraceSource ("RxFromS1u",
+                     "Receive data packets from S1-U Net Device",
+                     MakeTraceSourceAccessor (&EpcEnbApplication::m_rxS1uSocketPktTrace),
+                     "ns3::EpcEnbApplication::RxTracedCallback")
+    ;
   return tid;
 }
 
@@ -86,6 +101,7 @@ EpcEnbApplication::EpcEnbApplication (Ptr<Socket> lteSocket, Ptr<Socket> s1uSock
     m_gtpuUdpPort (2152), // fixed by the standard
     m_s1SapUser (0),
     m_s1apSapMme (0),
+    m_s1apSapEnbProvider (0),
     m_cellId (cellId)
 {
   NS_LOG_FUNCTION (this << lteSocket << s1uSocket << sgwS1uAddress);
@@ -115,14 +131,20 @@ EpcEnbApplication::GetS1SapProvider ()
   return m_s1SapProvider;
 }
 
-void 
+void
 EpcEnbApplication::SetS1apSapMme (EpcS1apSapMme * s)
 {
   m_s1apSapMme = s;
 }
 
-  
-EpcS1apSapEnb* 
+void
+EpcEnbApplication::SetS1apSapMme (EpcS1apSapEnbProvider * s)
+{
+  m_s1apSapEnbProvider = s;
+}
+
+
+EpcS1apSapEnb*
 EpcEnbApplication::GetS1apSapEnb ()
 {
   return m_s1apSapEnb;
@@ -134,14 +156,20 @@ EpcEnbApplication::DoInitialUeMessage (uint64_t imsi, uint16_t rnti)
   NS_LOG_FUNCTION (this);
   // side effect: create entry if not exist
   m_imsiRntiMap[imsi] = rnti;
-  m_s1apSapMme->InitialUeMessage (imsi, rnti, imsi, m_cellId);
+  if (m_s1apSapEnbProvider == 0)
+    m_s1apSapMme->InitialUeMessage (imsi, rnti, imsi, m_cellId);
+  else
+  {
+	NI_LOG_CONSOLE_DEBUG("EPC.ENB.APPLICATION: calling m_s1apSapEnbProvider->SendInitialUeMessage");
+    m_s1apSapEnbProvider->SendInitialUeMessage (imsi, rnti, imsi, m_cellId); // TODO if more than one MME is used, extend this call
+  }
 }
 
 void 
 EpcEnbApplication::DoPathSwitchRequest (EpcEnbS1SapProvider::PathSwitchRequestParameters params)
 {
   NS_LOG_FUNCTION (this);
-  uint16_t enbUeS1Id = params.rnti;  
+  uint16_t enbUeS1Id = params.rnti;
   uint64_t mmeUeS1Id = params.mmeUeS1Id;
   uint64_t imsi = mmeUeS1Id;
   // side effect: create entry if not exist
@@ -157,7 +185,7 @@ EpcEnbApplication::DoPathSwitchRequest (EpcEnbS1SapProvider::PathSwitchRequestPa
       flowId.m_rnti = params.rnti;
       flowId.m_bid = bit->epsBearerId;
       uint32_t teid = bit->teid;
-      
+
       EpsFlowId_t rbid (params.rnti, bit->epsBearerId);
       // side effect: create entries if not exist
       m_rbidTeidMap[params.rnti][bit->epsBearerId] = teid;
@@ -170,7 +198,10 @@ EpcEnbApplication::DoPathSwitchRequest (EpcEnbS1SapProvider::PathSwitchRequestPa
 
       erabToBeSwitchedInDownlinkList.push_back (erab);
     }
-  m_s1apSapMme->PathSwitchRequest (enbUeS1Id, mmeUeS1Id, gci, erabToBeSwitchedInDownlinkList);
+  if (m_s1apSapEnbProvider == 0)
+    m_s1apSapMme->PathSwitchRequest (enbUeS1Id, mmeUeS1Id, gci, erabToBeSwitchedInDownlinkList);
+  else
+    m_s1apSapEnbProvider->SendPathSwitchRequest (enbUeS1Id, mmeUeS1Id, gci, erabToBeSwitchedInDownlinkList);
 }
 
 void 
@@ -201,12 +232,11 @@ EpcEnbApplication::DoInitialContextSetupRequest (uint64_t mmeUeS1Id, uint16_t en
        ++erabIt)
     {
       // request the RRC to setup a radio bearer
-
       uint64_t imsi = mmeUeS1Id;
       std::map<uint64_t, uint16_t>::iterator imsiIt = m_imsiRntiMap.find (imsi);
       NS_ASSERT_MSG (imsiIt != m_imsiRntiMap.end (), "unknown IMSI");
       uint16_t rnti = imsiIt->second;
-      
+
       struct EpcEnbS1SapUser::DataRadioBearerSetupRequestParameters params;
       params.rnti = rnti;
       params.bearer = erabIt->erabLevelQosParameters;
@@ -259,6 +289,7 @@ EpcEnbApplication::RecvFromLteSocket (Ptr<Socket> socket)
       std::map<uint8_t, uint32_t>::iterator bidIt = rntiIt->second.find (bid);
       NS_ASSERT (bidIt != rntiIt->second.end ());
       uint32_t teid = bidIt->second;
+      m_rxLteSocketPktTrace (packet->Copy ());
       SendToS1uSocket (packet, teid);
     }
 }
@@ -273,9 +304,16 @@ EpcEnbApplication::RecvFromS1uSocket (Ptr<Socket> socket)
   packet->RemoveHeader (gtpu);
   uint32_t teid = gtpu.GetTeid ();
   std::map<uint32_t, EpsFlowId_t>::iterator it = m_teidRbidMap.find (teid);
-  NS_ASSERT (it != m_teidRbidMap.end ());
-
-  SendToLteSocket (packet, it->second.m_rnti, it->second.m_bid);
+  if (it != m_teidRbidMap.end ())
+    {
+      m_rxS1uSocketPktTrace (packet->Copy ());
+      SendToLteSocket (packet, it->second.m_rnti, it->second.m_bid);
+    }
+  else
+    {
+      packet = 0;
+      NS_LOG_DEBUG("UE context not found, discarding packet when receiving from s1uSocket");
+    }
 }
 
 void 
@@ -312,6 +350,10 @@ EpcEnbApplication::DoReleaseIndication (uint64_t imsi, uint16_t rnti, uint8_t be
   erab.erabId = bearerId;
   erabToBeReleaseIndication.push_back (erab);
   //From 3GPP TS 23401-950 Section 5.4.4.2, enB sends EPS bearer Identity in Bearer Release Indication message to MME
-  m_s1apSapMme->ErabReleaseIndication (imsi, rnti, erabToBeReleaseIndication);
+  if (m_s1apSapEnbProvider == 0)
+    m_s1apSapMme->ErabReleaseIndication (imsi, rnti, erabToBeReleaseIndication);
+  else
+    m_s1apSapEnbProvider->SendErabReleaseIndication (imsi, rnti, erabToBeReleaseIndication);
 }
+
 }  // namespace ns3

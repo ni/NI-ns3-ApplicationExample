@@ -1012,13 +1012,15 @@ LteEnbMac::DoSchedDlConfigInd (FfMacSchedSapUser::SchedDlConfigIndParameters ind
                   uint32_t macPduSize = ind.m_buildDataList.at (i).m_rlcPduList.at (j).at (k).m_size;
                   uint32_t rlcPduSize = 0;
 
-                  if (m_enbPhySapProvider->GetNiApiEnable ())
+                  if (m_enbPhySapProvider->GetNiApiEnable ()) {
                     // adapt TB size for control channel overhead (150 bytes)
-                    if (macPduSize <= 150) {
-                        NI_LOG_FATAL("eNB MAC DL - PDU Size smaller than 150 Byte");
+                    const uint32_t ctrlChannelOverhead = 150;
+                    if (macPduSize <= ctrlChannelOverhead) {
+                        NI_LOG_FATAL("eNB MAC DL - PDU Size smaller than " << ctrlChannelOverhead << " Byte");
                     } else {
-                        rlcPduSize =  macPduSize-150;
+                        rlcPduSize =  macPduSize-ctrlChannelOverhead;
                     }
+                  }
                   else{
                       rlcPduSize =  macPduSize;
                   }

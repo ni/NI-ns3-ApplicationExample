@@ -5,7 +5,7 @@
 ns3_base_dir="/home/root/ns-3.26/"
 
 packetSize="1000"
-numPackets="500"
+numPackets="80"
 interPacketInterval="500"
 simTime="60"
 transmTime="10"

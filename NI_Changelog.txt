@@ -1,6 +1,22 @@
 Changelog - NI ns3 Application Example
 
 ======================
+v2.0.0        26.09.19
+======================
+
+- FEATURE: added LTE dual connectivity functionality (DC) developed by Universitat Politècnica de Catalunya (UPC)see src/dali
+- FEATURE: added option for uplink data transfer in LTE
+- FIX: corrected LWX header size used for LWA/LWIP functinoality  
+- CHANGE: extended ./ni_start.sh script with simulation examples for LTE, DC and WIFI
+- CHANGE: removed blocking startup behavior for ns-3 simulator when L1-L2 API is enabled
+- CHANGE: simplified L1-L2 API settings for WIFI
+- CHANGE: improved FPGA / CPU timming alignment
+- CHANGE: improved stability in L1-L2 API 
+- CHANGE: improved real-time performance in logging module, emu-net-devices, thread handling
+
+
+
+======================
 v1.1.0        24.05.19
 ======================
 

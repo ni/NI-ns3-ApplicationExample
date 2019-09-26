@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011, 2012 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,6 +19,11 @@
  *
  * Author: Nicola Baldo <nbaldo@cttc.es>
  *         Budiarto Herman <budiarto.herman@magister.fi>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #include "lte-ue-rrc.h"
@@ -33,6 +40,7 @@
 #include <ns3/lte-rlc-am.h>
 #include <ns3/lte-pdcp.h>
 #include <ns3/lte-radio-bearer-info.h>
+#include <ns3/dali-ue-pdcp.h>
 
 #include <cmath>
 
@@ -138,7 +146,11 @@ LteUeRrc::LteUeRrc ()
     m_hasReceivedMib (false),
     m_hasReceivedSib1 (false),
     m_hasReceivedSib2 (false),
-    m_csgWhiteList (0)
+    m_csgWhiteList (0),
+	m_isSecondaryRRC (false),
+	m_isDualConnectivity (false),
+	m_usePdcpInSequenceDelivery (false),
+	m_splitBearerUe (false)
 {
   NS_LOG_FUNCTION (this);
   m_cphySapUser = new MemberLteUeCphySapUser<LteUeRrc> (this);
@@ -146,6 +158,7 @@ LteUeRrc::LteUeRrc ()
   m_rrcSapProvider = new MemberLteUeRrcSapProvider<LteUeRrc> (this);
   m_drbPdcpSapUser = new LtePdcpSpecificLtePdcpSapUser<LteUeRrc> (this);
   m_asSapProvider = new MemberLteAsSapProvider<LteUeRrc> (this);
+  m_dcxSapUser = new UeDcxSpecificUeDcxSapUser<LteUeRrc> (this);
 }
 
 
@@ -163,6 +176,7 @@ LteUeRrc::DoDispose ()
   delete m_rrcSapProvider;
   delete m_drbPdcpSapUser;
   delete m_asSapProvider;
+  delete m_dcxSapUser;
   m_drbMap.clear ();
 }
 
@@ -257,10 +271,79 @@ LteUeRrc::GetTypeId (void)
                      "trace fired upon failure of a handover procedure",
                      MakeTraceSourceAccessor (&LteUeRrc::m_handoverEndErrorTrace),
                      "ns3::LteUeRrc::ImsiCidRntiTracedCallback")
+    .AddAttribute ("SecondaryRRC",
+                      "True if this is the RRC in charge of the secondary cell (MmWaveCell) for a MC device",
+                      BooleanValue (false),
+                      MakeBooleanAccessor (&LteUeRrc::m_isSecondaryRRC),
+                      MakeBooleanChecker ())
+	.AddAttribute ("DualConnectivity",
+			 	 	 "True if this is the RRC of a DALI Dual Connectivity Device. It also use the value of SecondaryRRC to identify the sUE",
+					 BooleanValue (false),
+					 MakeBooleanAccessor (&LteUeRrc::m_isDualConnectivity),
+					 MakeBooleanChecker ())
+	.AddAttribute ("usePdcpInSequenceDelivery",
+		           "Indicates whether PDCP will reorder received packets before sending them to the upper layer",
+				   BooleanValue (false),
+				   MakeBooleanAccessor (&LteUeRrc::m_usePdcpInSequenceDelivery),
+				   MakeBooleanChecker ())
+	.AddAttribute ("splitBearerUe",
+		           "Indicates whether PDCP on UE side will split bearer in Uplink direction",
+				   BooleanValue (false),
+				   MakeBooleanAccessor (&LteUeRrc::m_splitBearerUe),
+				   MakeBooleanChecker ())
+	.AddAttribute ("TargetImsi",
+			        "DCX Target UE identifier",
+					UintegerValue (0),
+					MakeUintegerAccessor (&LteUeRrc::m_targetImsi),
+					MakeUintegerChecker<uint64_t> ())
+	.AddAttribute ("DCgtpTeid",
+			 	 	"DCX gte Tunelling identifier used for DALI",
+					UintegerValue (1),
+					MakeUintegerAccessor (&LteUeRrc::m_DCgtpTeid),
+					MakeUintegerChecker<uint32_t> ())
   ;
   return tid;
 }
 
+void
+LteUeRrc::SetUeDcxSapProvider (UeDcxSapProvider * s)
+{
+  NS_LOG_FUNCTION (this << s);
+  m_dcxSapProvider = s;
+}
+
+UeDcxSapUser*
+LteUeRrc::GetUeDcxSapUser ()
+{
+  NS_LOG_FUNCTION (this);
+  return m_dcxSapUser;
+}
+
+void
+LteUeRrc::SetUeDcxPdcpProvider (UeDcxPdcpProvider * s)
+{
+  NS_LOG_FUNCTION (this << s);
+  m_dcxPdcpProvider = s;
+}
+
+void
+LteUeRrc::SetUeDcxRlcProvider (UeDcxRlcProvider * s)
+{
+  NS_LOG_FUNCTION (this << s);
+  m_dcxRlcProvider = s;
+}
+
+UeDcxPdcpProvider*
+LteUeRrc::GetUeDcxPdcpProvider () const
+{
+  return m_dcxPdcpProvider;
+}
+
+UeDcxRlcProvider*
+LteUeRrc::GetUeDcxRlcProvider () const
+{
+  return m_dcxRlcProvider;
+}
 
 void
 LteUeRrc::SetLteUeCphySapProvider (LteUeCphySapProvider * s)
@@ -385,6 +468,13 @@ LteUeRrc::GetState (void) const
   return m_state;
 }
 
+bool
+LteUeRrc::GetIsDualConnectivity (void) const
+{
+  NS_LOG_FUNCTION (this);
+  return m_isDualConnectivity;
+}
+
 void
 LteUeRrc::SetUseRlcSm (bool val) 
 {
@@ -447,9 +537,19 @@ LteUeRrc::DoSendData (Ptr<Packet> packet, uint8_t bid)
                      << " on DRBID " << (uint32_t) drbid
                      << " (LCID " << (uint32_t) params.lcid << ")"
                      << " (" << packet->GetSize () << " bytes)");
-  it->second->m_pdcp->GetLtePdcpSapProvider ()->TransmitPdcpSdu (params);
+  if (!(m_isDualConnectivity && m_isSecondaryRRC))
+  {
+    it->second->m_pdcp->GetLtePdcpSapProvider ()->TransmitPdcpSdu (params);
 
-  NI_LOG_DEBUG("LteUeRrc::DoSendData: RNTI=" << m_rnti << " sending " << packet << "on DRBID " << (uint32_t) drbid << " (LCID" << params.lcid << ")" << " (" << packet->GetSize () << " bytes)");
+    NI_LOG_DEBUG("LteUeRrc::DoSendData: RNTI=" << m_rnti << " sending " << packet << "on DRBID " << (uint32_t) drbid << " (LCID" << params.lcid << ")" << " (" << packet->GetSize () << " bytes)");
+  }
+  /*// For DALI Dual Connectivity Scenario, sUE is know allowed to start an independent communication with SeNB
+   *
+   * else
+   *   std::cout << "RNTI=" << m_rnti << " (sUE) trying to send packet " << packet
+   *             << " on DRBID " << (uint32_t) drbid
+   *             << " (LCID " << (uint32_t) params.lcid << ")"
+   *             << " (" << packet->GetSize () << " bytes)" << std::endl;*/
 
     }
 }
@@ -522,6 +622,7 @@ LteUeRrc::DoNotifyRandomAccessSuccessful ()
         SwitchToState (IDLE_CONNECTING);
         LteRrcSap::RrcConnectionRequest msg;
         msg.ueIdentity = m_imsi;
+        msg.isDc = m_isSecondaryRRC;
         m_rrcSapUser->SendRrcConnectionRequest (msg); 
         m_connectionTimeout = Simulator::Schedule (m_t300,
                                                    &LteUeRrc::ConnectionTimeout,
@@ -955,7 +1056,18 @@ LteUeRrc::DoRecvRrcConnectionReconfiguration (LteRrcSap::RrcConnectionReconfigur
             }
           LteRrcSap::RrcConnectionReconfigurationCompleted msg2;
           msg2.rrcTransactionIdentifier = msg.rrcTransactionIdentifier;
-          m_rrcSapUser->SendRrcConnectionReconfigurationCompleted (msg2);
+          if (!m_isDualConnectivity)
+            m_rrcSapUser->SendRrcConnectionReconfigurationCompleted (msg2);
+          else if (!m_isSecondaryRRC)
+        	  if  (msg.haveMeasConfig) //When msg includes MeasConfig it don't belong to a DALI split bearer RRC Connection Reconfiguration message
+        	  {
+        		m_rrcSapUser->SendRrcConnectionReconfigurationCompleted (msg2);
+        		m_msgRrcConnectionReconfiguration = msg; // store RrcConnectionReconfiguration message to send it to sUE when split bearer is configured
+        	  }
+        	  else
+        		m_msgRrcConnectionReconfigurationCompleted = msg2; // store the message to send it to MeNB when sUE inform that have completed bearer configuration
+          else
+        	this->m_dcxSapProvider->SendRrcDcConnectionReconfigurationCompleted(this->GetImsi(), m_targetImsi, msg2); // inform to master UE that bearer has been configured
           m_connectionReconfigurationTrace (m_imsi, m_cellId, m_rnti);
         }
       break;
@@ -1033,7 +1145,70 @@ LteUeRrc::DoRecvRrcConnectionReject (LteRrcSap::RrcConnectionReject msg)
   NI_LOG_DEBUG ("LteUeRrc::DoRecvRrcConnectionReject: SwitchToState (IDLE_CAMPED_NORMALLY)");
 }
 
+void
+LteUeRrc::DoRecvRrcDcConnectionReconfiguration (uint64_t sourceImsi, uint64_t targetImsi, LteRrcSap::RrcConnectionReconfiguration msg)
+{
+  NS_LOG_FUNCTION (this);
 
+  NS_LOG_LOGIC ("Recv RrcDcConnectionReconfiguration message through DCX interface");
+  NS_LOG_LOGIC ("sourceImsi = " << sourceImsi);
+  NS_LOG_LOGIC ("targetImsi = " << targetImsi);
+
+  if (m_isDualConnectivity && m_isSecondaryRRC)
+    {
+	  DoRecvRrcConnectionReconfiguration (msg);
+    }
+  else
+    {
+      NS_FATAL_ERROR ("DCX Recv RrcDcConnectionReconfiguration message received but UE is not DALI Dual Connectivity Secondary UE");
+    }
+}
+
+void
+LteUeRrc::DoRecvRrcDcConnectionReconfigurationCompleted (uint64_t sourceImsi, uint64_t targetImsi, LteRrcSap::RrcConnectionReconfigurationCompleted msg)
+{
+  NS_LOG_FUNCTION (this);
+
+  NS_LOG_LOGIC ("Recv RrcDcConnectionReconfigurationCompleted message through DCX interface");
+  NS_LOG_LOGIC ("sourceImsi = " << sourceImsi);
+  NS_LOG_LOGIC ("targetImsi = " << targetImsi);
+
+  if (m_isDualConnectivity && !m_isSecondaryRRC)
+    {
+	  NS_LOG_LOGIC ("Notify MeNB that RRC Connection Reconfiguration is Completed for DALI Dual Connectivity");
+	  LteRrcSap::RrcConnectionReconfigurationCompleted msg2;
+	  msg2.rrcTransactionIdentifier = m_msgRrcConnectionReconfigurationCompleted.rrcTransactionIdentifier;
+	  m_rrcSapUser->SendRrcConnectionReconfigurationCompleted (msg2);
+    }
+  else
+    {
+      NS_FATAL_ERROR ("DCX Recv RrcDcConnectionReconfigurationCompleted message received but UE is not DALI Dual Connectivity Master UE");
+    }
+}
+
+void
+LteUeRrc::DoRecvEnbData (UeDcxSapUser::UeDataParams params)
+{
+  NS_LOG_FUNCTION (this);
+
+  NS_LOG_LOGIC ("Recv eNB DATA FORWARDING through DCX interface");
+  NS_LOG_LOGIC ("sourceImsi = " << params.sourceImsi);
+  NS_LOG_LOGIC ("targetImsi = " << params.targetImsi);
+  NS_LOG_LOGIC ("gtpTeid = " << params.gtpTeid);
+  NS_LOG_LOGIC ("ueData = " << params.ueData);
+  NS_LOG_LOGIC ("ueData size = " << params.ueData->GetSize ());
+
+  std::map<uint32_t, DcxTeidInfo>::iterator
+    teidInfoIt = m_dcxTeidInfoMap.find (params.gtpTeid);
+  if (teidInfoIt != m_dcxTeidInfoMap.end ())
+    {
+      DoSendData (params.ueData, teidInfoIt->second.drbid);
+    }
+  else
+    {
+      NS_FATAL_ERROR ("DCX data received but no DcxTeidInfo found");
+    }
+}
 
 void
 LteUeRrc::SynchronizeToStrongestCell ()
@@ -1281,13 +1456,38 @@ LteUeRrc::ApplyRadioResourceConfigDedicated (LteRrcSap::RadioResourceConfigDedic
           // if we are using RLC/SM we don't care of anything above RLC
           if (rlcTypeId != LteRlcSm::GetTypeId ())
             {
-              Ptr<LtePdcp> pdcp = CreateObject<LtePdcp> ();
-              pdcp->SetRnti (m_rnti);
-              pdcp->SetLcId (dtamIt->logicalChannelIdentity);
-              pdcp->SetLtePdcpSapUser (m_drbPdcpSapUser);
-              pdcp->SetLteRlcSapProvider (rlc->GetLteRlcSapProvider ());
-              rlc->SetLteRlcSapUser (pdcp->GetLteRlcSapUser ());
-              drbInfo->m_pdcp = pdcp;
+              if (!m_isDualConnectivity)
+        	  {
+                Ptr<LtePdcp> pdcp = CreateObject<LtePdcp> ();
+                pdcp->SetRnti (m_rnti);
+                pdcp->SetLcId (dtamIt->logicalChannelIdentity);
+                pdcp->SetLtePdcpSapUser (m_drbPdcpSapUser);
+                pdcp->SetLteRlcSapProvider (rlc->GetLteRlcSapProvider ());
+                rlc->SetLteRlcSapUser (pdcp->GetLteRlcSapUser ());
+                drbInfo->m_pdcp = pdcp;
+              }
+              else if (!m_isSecondaryRRC) //if DALI Dual Connectivity, we need PDCP only if is a master UE
+        	  {
+        		Ptr<DaliUePdcp> pdcp = CreateObject<DaliUePdcp> ();
+        		pdcp->SetRnti (m_rnti);
+        		pdcp->SetLcId (dtamIt->logicalChannelIdentity);
+        		pdcp->SetLtePdcpSapUser (m_drbPdcpSapUser);
+        		pdcp->SetLteRlcSapProvider (rlc->GetLteRlcSapProvider ());
+        		pdcp->UseInSequenceDelivery(m_usePdcpInSequenceDelivery);
+        		rlc->SetLteRlcSapUser (pdcp->GetLteRlcSapUser ());
+        		drbInfo->m_pdcp = pdcp;
+        	  }
+        	  else
+        	  {
+        		// connect with remote PDCP
+        		rlc->SetUeDcxRlcProvider (this->GetUeDcxRlcProvider());
+        		DaliUeDcxSap::UeDataParams ueParams;
+        		ueParams.sourceImsi = this->GetImsi();
+        		ueParams.targetImsi = m_targetImsi; // the mUE Imsi
+        		ueParams.gtpTeid = m_DCgtpTeid; // Currently set up manually through attributes
+        		rlc->SetDcUeDataParams(ueParams);
+        		this->m_dcxSapProvider->SetUeDcxRlcUser (ueParams.gtpTeid, rlc->GetUeDcxRlcUser());
+        	  }
             }
 
           m_bid2DrbidMap[dtamIt->epsBearerIdentity] = dtamIt->drbIdentity;
@@ -1310,7 +1510,54 @@ LteUeRrc::ApplyRadioResourceConfigDedicated (LteRrcSap::RadioResourceConfigDedic
         {
           NS_LOG_INFO ("request to modify existing DRBID");
           Ptr<LteDataRadioBearerInfo> drbInfo = drbMapIt->second;
-          /// \todo currently not implemented. Would need to modify drbInfo, and then propagate changes to the MAC
+          NS_LOG_INFO ("Is DALI Dual Connectivity " << dtamIt->isDc);
+          if(dtamIt->isDc == true) // we need to set up PDCP and remote RLC for DALI Dual Connectivity
+          {
+            if (m_isDualConnectivity)
+              if (!m_isSecondaryRRC) // only on master UE
+              {
+                Ptr<DaliUePdcp> pdcp = DynamicCast<DaliUePdcp> (drbInfo->m_pdcp);
+                if(pdcp !=0)
+                {
+                  // Activate Split Bearer on PDCP UE side according to splitBearerUe value
+                  pdcp->UseDualConnectivity(m_splitBearerUe);
+                  // Get the UE DCX and set it in the PDCP
+                  pdcp->SetUeDcxPdcpProvider(this->GetUeDcxPdcpProvider());
+                  // Set UeDataParams
+                  DaliUeDcxSap::UeDataParams params;
+                  params.sourceImsi = this->GetImsi();
+                  params.targetImsi = m_targetImsi; // the sUE Imsi
+                  params.gtpTeid = m_DCgtpTeid; // Currently set up manually through attributes
+                  pdcp->SetUeDataParams(params);
+                  // Setup TEIDs for receiving data eventually forwarded over DCX
+                  LteUeRrc::DcxTeidInfo dcxTeidInfo;
+                  dcxTeidInfo.rnti = m_rnti;
+                  dcxTeidInfo.drbid = drbMapIt->first;
+                  //std::pair<std::map<uint32_t, LteUeRrc::DcxTeidInfo>::drbMapIt, bool> ret;
+                  this->m_dcxTeidInfoMap.insert (std::pair<uint32_t, LteUeRrc::DcxTeidInfo> (params.gtpTeid, dcxTeidInfo));
+                  // NS_ASSERT_MSG (ret.second == true, "overwriting a pre-existing entry in m_x2uMcTeidInfoMap");
+                  // Setup UeDcxPdcpUser
+                  this->m_dcxSapProvider->SetUeDcxPdcpUser(params.gtpTeid, pdcp->GetUeDcxPdcpUser());
+
+                  // Create a remote RLC, pass along the RrcConnectionReconfiguration message
+                  LteRrcSap::RrcConnectionReconfiguration msg = m_msgRrcConnectionReconfiguration;
+                  this->m_dcxSapProvider->SendRrcDcConnectionReconfiguration(this->GetImsi(), m_targetImsi, msg);
+                }
+                else
+                {
+                  NS_FATAL_ERROR("DC split bearer setup on a non DALI DC-capable bearer");
+                }
+              }
+              else
+        	    NS_FATAL_ERROR("DC split bearer setup can't be done in an secondary UE");
+            else
+              NS_FATAL_ERROR("Trying to set up DC split bearer on a device non configured as DALI DC");
+          }
+          else
+          {
+            NS_LOG_INFO ("Modify Data Radio Bearer : not implemented");
+            /// \todo currently not implemented. Would need to modify drbInfo, and then propagate changes to the MAC
+          }
         }
     }
   
@@ -2855,7 +3102,7 @@ LteUeRrc::SwitchToState (State newState)
   NI_LOG_CONSOLE_DEBUG ("LTE.UE.RRC: " << ToString (oldState) << " --> " << ToString (newState) << " (IMSI=" << m_imsi << ", RNTI=" << m_rnti << ")");
   if ((!NI_LOG_ENABLED) && oldState == IDLE_CONNECTING && newState == CONNECTED_NORMALLY)
     {
-      NI_LOG_CONSOLE_INFO("UE RRC CONNECTED");
+      NI_LOG_CONSOLE_INFO("UE (" << m_imsi << "," << m_rnti << ") RRC CONNECTED");
     }
   switch (newState)
     {

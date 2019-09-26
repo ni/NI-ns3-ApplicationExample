@@ -53,6 +53,9 @@ namespace ns3 {
 
     const uint64_t m_phyTimeUsAccuSize = 8;
 
+    uint64_t m_misalignedCount = 0; // counts the number of subsequent misalignments in timing
+    int64_t m_lastNs3Timing = -1; // ns3 timing on last error
+
   };
 
 } // namespace ns3

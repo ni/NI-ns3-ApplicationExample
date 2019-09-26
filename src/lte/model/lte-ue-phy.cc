@@ -172,6 +172,46 @@ LteUePhy::LteUePhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy)
   // NI API CHANGE: create NiLtePhyInterface object as UE
   m_niLtePhyModule = CreateObject <NiLtePhyInterface> (NS3_UE);
   // create callbacks from ni phy interface
+  m_niLtePhyModule->SetNiPhyTimingIndEndOkCallback (MakeCallback (&LteUePhy::NiApiPhyTimingIndReceived, this));
+  m_niLtePhyModule->SetNiPhyRxDataEndOkCallback (MakeCallback (&LteUePhy::PhyPduReceived, this));
+  m_niLtePhyModule->SetNiPhyRxCtrlEndOkCallback (MakeCallback (&LteUePhy::ReceiveLteControlMessageList, this));
+  m_niLtePhyModule->SetNiPhyRxCqiReportCallback (MakeCallback (&LteUePhy::GenerateCtrlCqiReport, this));
+  m_niLtePhyModule->SetNiPhySpectrumModelCallback (MakeCallback (&LteUePhy::GetDlSpectrumPhy, this));
+
+}
+
+LteUePhy::LteUePhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy, Ns3LteDevType_t ns3DevType)
+  : LtePhy (dlPhy, ulPhy),
+    m_p10CqiPeriocity (MilliSeconds (1)),  // ideal behavior
+    m_a30CqiPeriocity (MilliSeconds (1)),  // ideal behavior
+    m_uePhySapUser (0),
+    m_ueCphySapUser (0),
+    m_state (CELL_SEARCH),
+    m_subframeNo (0),
+    m_rsReceivedPowerUpdated (false),
+    m_rsInterferencePowerUpdated (false),
+    m_dataInterferencePowerUpdated (false),
+    m_pssReceived (false),
+    m_ueMeasurementsFilterPeriod (MilliSeconds (200)),
+    m_ueMeasurementsFilterLast (MilliSeconds (0)),
+    m_rsrpSinrSampleCounter (0)
+{
+  m_amc = CreateObject <LteAmc> ();
+  m_powerControl = CreateObject <LteUePowerControl> ();
+  m_uePhySapProvider = new UeMemberLteUePhySapProvider (this);
+  m_ueCphySapProvider = new MemberLteUeCphySapProvider<LteUePhy> (this);
+  m_macChTtiDelay = UL_PUSCH_TTIS_DELAY;
+
+  NS_ASSERT_MSG (Simulator::Now ().GetNanoSeconds () == 0,
+                 "Cannot create UE devices after simulation started");
+  Simulator::Schedule (m_ueMeasurementsFilterPeriod, &LteUePhy::ReportUeMeasurements, this);
+
+  DoReset ();
+
+  // NI API CHANGE: create NiLtePhyInterface object as UE
+  m_niLtePhyModule = CreateObject <NiLtePhyInterface> (ns3DevType);
+  // create callbacks from ni phy interface
+  m_niLtePhyModule->SetNiPhyTimingIndEndOkCallback (MakeCallback (&LteUePhy::NiApiPhyTimingIndReceived, this));
   m_niLtePhyModule->SetNiPhyRxDataEndOkCallback (MakeCallback (&LteUePhy::PhyPduReceived, this));
   m_niLtePhyModule->SetNiPhyRxCtrlEndOkCallback (MakeCallback (&LteUePhy::ReceiveLteControlMessageList, this));
   m_niLtePhyModule->SetNiPhyRxCqiReportCallback (MakeCallback (&LteUePhy::GenerateCtrlCqiReport, this));
@@ -315,23 +355,38 @@ LteUePhy::DoInitialize ()
   NS_LOG_FUNCTION (this);
   bool haveNodeId = false;
   uint32_t nodeId = 0;
-  if (m_netDevice != 0)
+
+  // NI API CHANGE: start UE only if simulation mode is configured
+  bool startUeSimulation = true;
+  if (m_niLtePhyModule->GetNiApiEnable () == true &&
+      m_niLtePhyModule->GetNiApiDevType() == NIAPI_UE &&
+      m_niLtePhyModule->GetNiApiLoopbackEnable() == false &&
+      m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)
     {
-      Ptr<Node> node = m_netDevice->GetNode ();
-      if (node != 0)
+      startUeSimulation = false;
+    }
+
+  if (startUeSimulation)
+    {
+      NI_LOG_DEBUG(this << ", LteUePhy::DoInitialize, startUeSimulation");
+      if (m_netDevice != 0)
         {
-          nodeId = node->GetId ();
-          haveNodeId = true;
+          Ptr<Node> node = m_netDevice->GetNode ();
+          if (node != 0)
+            {
+              nodeId = node->GetId ();
+              haveNodeId = true;
+            }
+        }
+      if (haveNodeId)
+        {
+          Simulator::ScheduleWithContext (nodeId, Seconds (0), &LteUePhy::SubframeIndication, this, 1, 1);
+        }
+      else
+        {
+          Simulator::ScheduleNow (&LteUePhy::SubframeIndication, this, 1, 1);
         }
     }
-  if (haveNodeId)
-    {
-      Simulator::ScheduleWithContext (nodeId, Seconds (0), &LteUePhy::SubframeIndication, this, 1, 1);
-    }
-  else
-    {
-      Simulator::ScheduleNow (&LteUePhy::SubframeIndication, this, 1, 1);
-    }  
   LtePhy::DoInitialize ();
 }
 
@@ -879,6 +934,48 @@ LteUePhy::DoSendRachPreamble (uint32_t raPreambleId, uint32_t raRnti)
   m_controlMessagesQueue.at (0).push_back (msg);
 }
 
+// NI API CHANGE: start UE only if API w/ SDR is configured
+void
+LteUePhy::NiApiPhyTimingIndReceived (uint16_t frameNr, uint8_t subFrameNr, bool firstRun)
+{
+  NI_LOG_DEBUG("LteUePhy::NiApiPhyTimingIndReceived: " << std::to_string(frameNr) << "." << std::to_string(subFrameNr) <<
+               ", " << "firstRun:" << std::to_string(firstRun));
+
+  bool haveNodeId = false;
+  uint32_t nodeId = 0;
+  bool startUeSdr = false;
+
+  if (m_niLtePhyModule->GetNiApiEnable () == true &&
+      m_niLtePhyModule->GetNiApiDevType() == NIAPI_UE &&
+      m_niLtePhyModule->GetNiApiLoopbackEnable() == false &&
+      m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI &&
+      firstRun)
+    {
+      startUeSdr = true;
+    }
+  // start UE only if API w/ SDR is configured
+  if (startUeSdr)
+    {
+      NI_LOG_DEBUG(this << ", LteUePhy::NiApiPhyTimingIndReceived: Schedule SubframeIndication on firstRun" );
+      if (m_netDevice != 0)
+        {
+          Ptr<Node> node = m_netDevice->GetNode ();
+          if (node != 0)
+            {
+              nodeId = node->GetId ();
+              haveNodeId = true;
+            }
+        }
+      if (haveNodeId)
+        {
+          Simulator::ScheduleWithContext (nodeId, Seconds (0), &LteUePhy::SubframeIndication, this, 1, 1);
+        }
+      else
+        {
+          Simulator::ScheduleNow (&LteUePhy::SubframeIndication, this, 1, 1);
+        }
+    }
+}
 
 void
 LteUePhy::ReceiveLteControlMessageList (std::list<Ptr<LteControlMessage> > msgList)
@@ -989,7 +1086,8 @@ LteUePhy::ReceiveLteControlMessageList (std::list<Ptr<LteControlMessage> > msgLi
           // In the supported single user case we only get a RAR for this UE instance, thats why
           // we can ignore the raRNTI which was calculated based on LTE timing by the eNB.
           // TODO-NI: find a better solution
-          if (m_niLtePhyModule->GetNiApiEnable () == true)
+          if (m_niLtePhyModule->GetNiApiEnable () == true
+        		  && m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)  //DALI: fake nodes should not access NI API)
             {
               if (rarMsg->GetRaRnti () != m_raRnti)
                 {
@@ -1128,12 +1226,14 @@ LteUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
   NS_ASSERT_MSG (frameNo > 0, "the SRS index check code assumes that frameNo starts at 1");
 
   // NI API CHANGE
-  if (m_niLtePhyModule->GetNiApiEnable () == true){
+  if (m_niLtePhyModule->GetNiApiEnable () == true)
+  {
       // synchronize sfn and tti counters
       uint64_t offset = m_niLtePhyModule->NiSfnTtiCounterSync (&frameNo, &subframeNo);
       // ...
       if (m_niLtePhyModule->GetNiApiDevType() == NIAPI_UE &&
-          m_niLtePhyModule->GetNiApiLoopbackEnable() == false)
+          m_niLtePhyModule->GetNiApiLoopbackEnable() == false
+		  && m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)  //DALI: fake nodes should not access NI API
         {
           m_niLtePhyModule->NiStartSubframe(frameNo, subframeNo, Seconds (GetTti ()).GetMicroSeconds(), offset);
         }
@@ -1153,7 +1253,9 @@ LteUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
       Ptr<PacketBurst> pb = GetPacketBurst ();
 
       // NI API CHANGE: Switch between legacy ns-3 mode and use of NI API
-      if (m_niLtePhyModule->GetNiApiEnable () == true){
+      if (m_niLtePhyModule->GetNiApiEnable () == true)
+
+      {
           m_niLtePhyModule->NiStartTxCtrlDataFrame (pb, ctrlMsg, frameNo, subframeNo);
       } else { // original ns-3 code
 

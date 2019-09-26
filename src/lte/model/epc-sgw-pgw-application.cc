@@ -1,6 +1,7 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, University of Padova, Dep. of Information Engineering, SIGNET lab
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,6 +18,9 @@
  *
  * Author: Jaume Nin <jnin@cttc.cat>
  *         Nicola Baldo <nbaldo@cttc.cat>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          Dual Connectivity functionalities
  */
 
 
@@ -101,7 +105,16 @@ EpcSgwPgwApplication::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::EpcSgwPgwApplication")
     .SetParent<Object> ()
-    .SetGroupName("Lte");
+    .SetGroupName("Lte")
+    .AddTraceSource ("RxFromTun",
+                     "Receive data packets from internet in Tunnel net device",
+                     MakeTraceSourceAccessor (&EpcSgwPgwApplication::m_rxTunPktTrace),
+                     "ns3::EpcSgwPgwApplication::RxTracedCallback")
+    .AddTraceSource ("RxFromS1u",
+                     "Receive data packets from S1 U Socket",
+                     MakeTraceSourceAccessor (&EpcSgwPgwApplication::m_rxS1uPktTrace),
+                     "ns3::EpcSgwPgwApplication::RxTracedCallback")
+    ;
   return tid;
 }
 
@@ -139,6 +152,7 @@ bool
 EpcSgwPgwApplication::RecvFromTunDevice (Ptr<Packet> packet, const Address& source, const Address& dest, uint16_t protocolNumber)
 {
   NS_LOG_FUNCTION (this << source << dest << packet << packet->GetSize ());
+  m_rxTunPktTrace (packet->Copy ());
 
   // get IP address of UE
   Ptr<Packet> pCopy = packet->Copy ();
@@ -184,6 +198,8 @@ EpcSgwPgwApplication::RecvFromS1uSocket (Ptr<Socket> socket)
   uint32_t teid = gtpu.GetTeid ();
 
   SendToTunDevice (packet, teid);
+  
+  m_rxS1uPktTrace (packet->Copy ());
 }
 
 void 

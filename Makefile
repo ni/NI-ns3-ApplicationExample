@@ -42,6 +42,8 @@ install_ni:
 	cp build/libns3.26*.so /usr/local/lib
 	cp build/src/ni/examples/ns3.26-ni* /usr/local/bin/
 	cp build/src/tap-bridge/ns3.26-tap* /usr/local/bin/
+	cp build/src/fd-net-device/ns3.26-raw* /usr/local/bin/
+	cp build/src/dali/examples/* /usr/local/bin/
 	chmod +s /usr/local/bin/ns3.26*
 	ldconfig
 		

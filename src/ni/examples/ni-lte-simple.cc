@@ -45,6 +45,8 @@ main (int argc, char *argv[])
 {
 
   bool verbose = false;
+  bool pcapTracing = false;
+  bool printRoutingTables = false;
 
    // enable native ns-3 logging - note: can also be used if compiled in "debug" mode
    if (verbose)
@@ -79,6 +81,8 @@ main (int argc, char *argv[])
    uint32_t packetNum      = 5;
    // Packet sizes for ns-3 generated packets
    uint32_t packetSize     = 1000;
+   // direction of data flow
+   bool downlinkData       = true; // false for uplink
 
    // number of station nodes in infrastructure mode
    uint32_t nLteUeNodes = 1;
@@ -334,7 +338,7 @@ main (int argc, char *argv[])
      {
        Ptr<Node> TmpNode = ueNodes.Get (u);
        Ptr<Ipv4StaticRouting> StaticRouting = ipv4RoutingHelper.GetStaticRouting (TmpNode->GetObject<Ipv4> ());
-       StaticRouting->SetDefaultRoute (epcHelper->GetUeDefaultGatewayAddress (), 1);
+       StaticRouting->SetDefaultRoute (epcHelper->GetUeDefaultGatewayAddress (), 1); // 7.0.0.1
      }
 
    // Attach one UE per eNodeB
@@ -349,7 +353,7 @@ main (int argc, char *argv[])
      {
        Ptr<Node> TmpNode = LanNodes.Get (u);
        Ptr<Ipv4StaticRouting> StaticRouting = ipv4RoutingHelper.GetStaticRouting (TmpNode->GetObject<Ipv4> ());
-       StaticRouting->SetDefaultRoute (Ipv4Address (LanGwIpAddr), 1);
+       StaticRouting->SetDefaultRoute (Ipv4Address (LanGwIpAddr), 1); // 10.1.1.1
        //StaticRouting->AddNetworkRouteTo (Ipv4Address (UeIpSubnet), Ipv4Mask ("255.0.0.0"),  Ipv4Address (LanGwIpAddr), 1);
      }
 
@@ -360,18 +364,59 @@ main (int argc, char *argv[])
    Ptr<Ipv4StaticRouting> pgwStaticRouting = ipv4RoutingHelper.GetStaticRouting (PacketGwNode->GetObject<Ipv4> ());
    pgwStaticRouting->AddNetworkRouteTo (Ipv4Address (csmaIpSubnet), Ipv4Mask (IpMask), 2);
 
+   if (printRoutingTables)
+     {
+       // print global routing tables
+       Ipv4GlobalRoutingHelper globalRouting;
+       Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("routing_global", std::ios::out);
+       globalRouting.PrintRoutingTableAllAt (Seconds(0.1), routingStream );
+
+       // print static routing tables
+       Ptr<OutputStreamWrapper> testprint = Create<OutputStreamWrapper>("routing_static", std::ios::out);
+       Ptr<Node> PrintRouteNode;
+       Ptr<Ipv4StaticRouting> PrintRouteNodeStaticRouting;
+       for (int i=0; i < LanNodes.GetN(); i++)
+         {
+           PrintRouteNode = LanNodes.Get (i);
+           PrintRouteNodeStaticRouting = ipv4RoutingHelper.GetStaticRouting (PrintRouteNode->GetObject<Ipv4> ());
+           PrintRouteNodeStaticRouting->PrintRoutingTable(testprint);
+           NiUtils::PrintNodeInfo("LanNodes(" + std::to_string(i) + ")", PrintRouteNode);
+         }
+       PrintRouteNode = PacketGwNode;
+       PrintRouteNodeStaticRouting = ipv4RoutingHelper.GetStaticRouting (PrintRouteNode->GetObject<Ipv4> ());
+       PrintRouteNodeStaticRouting->PrintRoutingTable(testprint);
+       NiUtils::PrintNodeInfo("PacketGwNode", PrintRouteNode);
+       PrintRouteNode = enbNodes.Get (0);
+       PrintRouteNodeStaticRouting = ipv4RoutingHelper.GetStaticRouting (PrintRouteNode->GetObject<Ipv4> ());
+       PrintRouteNodeStaticRouting->PrintRoutingTable(testprint);
+       NiUtils::PrintNodeInfo("enbNode(0)", PrintRouteNode);
+       PrintRouteNode = ueNodes.Get (0);
+       PrintRouteNodeStaticRouting = ipv4RoutingHelper.GetStaticRouting (PrintRouteNode->GetObject<Ipv4> ());
+       PrintRouteNodeStaticRouting->PrintRoutingTable(testprint);
+       NiUtils::PrintNodeInfo("ueNode(0)", PrintRouteNode);
+     }
+
    // ==========================
    // application config
 
-   // user always LAN node as client
-   NodeContainer ClientNode     = LanNodes.Get (1);
-   Ipv4Address   ClientIpAddr   = LanIpInterfaces.GetAddress (1);
-   //NodeContainer ClientNode     = ueNodes.Get (0);
-   //Ipv4Address   ClientIpAddr   = ueIpInterfaces.GetAddress (0);
-   NodeContainer ServerNode     = ueNodes.Get (0);
-   Ipv4Address   ServerIPAddr   = ueIpInterfaces.GetAddress (0);
-   //NodeContainer ServerNode     = LanNodes.Get (2);
-   //Ipv4Address   ServerIPAddr   = LanIpInterfaces.GetAddress (2);
+   NodeContainer ClientNode, ServerNode;
+   Ipv4Address   ClientIpAddr, ServerIPAddr;
+   if (downlinkData)
+     {
+       // use LAN node as client and UE as server
+       ClientNode     = LanNodes.Get (1);
+       ClientIpAddr   = LanIpInterfaces.GetAddress (1);
+       ServerNode     = ueNodes.Get (0);
+       ServerIPAddr   = ueIpInterfaces.GetAddress (0);
+     }
+   else // uplinkData
+     {
+       // use LAN node as server and UE as client
+       ClientNode     = ueNodes.Get (0);
+       ClientIpAddr   = ueIpInterfaces.GetAddress (0);
+       ServerNode     = LanNodes.Get (1);
+       ServerIPAddr   = LanIpInterfaces.GetAddress (1);
+     }
 
    // print addresses
    std::cout << std::endl;
@@ -405,9 +450,18 @@ main (int argc, char *argv[])
        ClientHelp.SetAttribute ("PacketSize", UintegerValue (packetSize));
 
        if ((niApiDevMode == "NIAPI_BS")||(niApiDevMode == "NIAPI_BSTS")){
-           ApplicationContainer clientApps = ClientHelp.Install (ClientNode);
-           clientApps.Start (Seconds (transmTime));
-           clientApps.Stop (Seconds (simTime));
+           if (downlinkData) {
+               ApplicationContainer clientApps = ClientHelp.Install (ClientNode);
+               clientApps.Start (Seconds (transmTime));
+               clientApps.Stop (Seconds (simTime));
+           }
+       }
+       if ((niApiDevMode == "NIAPI_TS")||(niApiDevMode == "NIAPI_BSTS")){
+           if (!downlinkData) {
+               ApplicationContainer clientApps = ClientHelp.Install (ClientNode);
+               clientApps.Start (Seconds (transmTime));
+               clientApps.Stop (Seconds (simTime));
+           }
        }
 
        ApplicationContainer serverApps = ServerHelp.Install (ServerNode);
@@ -443,8 +497,13 @@ main (int argc, char *argv[])
        }
      }
 
-   // Uncomment to enable PCAP tracing
-   //p2ph.EnablePcapAll("lena-epc-first");
+   if (pcapTracing == true)
+     {
+       p2pHelp.EnablePcapAll("lte_simple_p2p");
+       csmaHelp.EnablePcapAll("lte_simple_csma");
+       //p2ph.EnablePcapAll("lena-epc-first");
+       //lteHelper->EnableTraces ();
+     }
 
    // stop the simulation after simTime seconds
    Simulator::Stop(Seconds(simTime));

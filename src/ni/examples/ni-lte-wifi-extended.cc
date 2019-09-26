@@ -352,6 +352,8 @@ int main (int argc, char *argv[]){
   // parse command line for function parameters
 
   CommandLine cmd;
+  std::string niApiWifiSta1RemoteIpAddrTxTmp, niApiWifiSta1RemotePortTxTmp,niApiWifiSta1LocalPortRxTmp;
+  std::string niApiWifiSta2RemoteIpAddrTxTmp, niApiWifiSta2RemotePortTxTmp, niApiWifiSta2LocalPortRxTmp;
 
   cmd.AddValue("packetSize", "size of application packet sent", packetSize);
   cmd.AddValue("numPackets", "number of packets generated", packetNum);
@@ -365,12 +367,12 @@ int main (int argc, char *argv[]){
   cmd.AddValue("niApiDevMode", "Set whether the simulation should run as BS or Terminal", niApiDevMode);
   cmd.AddValue("niApiWifiEnabled", "Enable NI API for WiFi", niApiWifiEnabled);
   cmd.AddValue("niApiWifiLoopbackEnabled", "Enable/disable UDP loopback mode for WiFi NI API", niApiWifiLoopbackEnabled);
-  cmd.AddValue("niApiWifiSta1RemoteIpAddrTx", "Remote IP address for UDP socket on STA1", niApiWifiSta1RemoteIpAddrTx);
-  cmd.AddValue("niApiWifiSta1RemotePortTx", "Remote port for UDP socket on STA1", niApiWifiSta1RemotePortTx);
-  cmd.AddValue("niApiWifiSta1LocalPortRx", "Local RX port of STA1", niApiWifiSta1LocalPortRx);
-  cmd.AddValue("niApiWifiSta2RemoteIpAddrTx", "Remote IP address for UDP socket on STA2", niApiWifiSta2RemoteIpAddrTx);
-  cmd.AddValue("niApiWifiSta2RemotePortTx", "Remote port for UDP socket on STA2", niApiWifiSta2RemotePortTx);
-  cmd.AddValue("niApiWifiSta2LocalPortRx", "Local RX port of STA2", niApiWifiSta2LocalPortRx);
+  cmd.AddValue("niApiWifiSta1RemoteIpAddrTx", "Remote IP address for UDP socket on STA1", niApiWifiSta1RemoteIpAddrTxTmp);
+  cmd.AddValue("niApiWifiSta1RemotePortTx", "Remote port for UDP socket on STA1", niApiWifiSta1RemotePortTxTmp);
+  cmd.AddValue("niApiWifiSta1LocalPortRx", "Local RX port of STA1", niApiWifiSta1LocalPortRxTmp);
+  cmd.AddValue("niApiWifiSta2RemoteIpAddrTx", "Remote IP address for UDP socket on STA2", niApiWifiSta2RemoteIpAddrTxTmp);
+  cmd.AddValue("niApiWifiSta2RemotePortTx", "Remote port for UDP socket on STA2", niApiWifiSta2RemotePortTxTmp);
+  cmd.AddValue("niApiWifiSta2LocalPortRx", "Local RX port of STA2", niApiWifiSta2LocalPortRxTmp);
   cmd.AddValue("niApiWifiSta1MacAddr", "MAC address of STA1 in format ff:ff:ff:ff:ff:ff", niApiWifiSta1MacAddr);
   cmd.AddValue("niApiWifiSta2MacAddr", "MAC address of STA2 in format ff:ff:ff:ff:ff:ff", niApiWifiSta2MacAddr);
   cmd.AddValue("niApiWifiBssidMacAddr", "MAC address of BSSID in format ff:ff:ff:ff:ff:ff", niApiWifiBssidMacAddr);
@@ -415,6 +417,56 @@ int main (int argc, char *argv[]){
   } else {
       NS_FATAL_ERROR ("niApiDevMode " << niApiDevMode << " not allowed");
   }
+
+  // check and apply 802.11 API settings
+  if (niApiWifiSta1RemoteIpAddrTxTmp.empty() || niApiWifiSta1RemotePortTxTmp.empty() || niApiWifiSta1LocalPortRxTmp.empty())
+    {
+      // API settings where empty or incomplete, assign defaults
+      niApiWifiSta1RemoteIpAddrTx = "127.0.0.1";
+      if (niApiWifiLoopbackEnabled)
+        {
+          // apply default settings for local loopback
+          niApiWifiSta1RemotePortTx = "12701";
+          niApiWifiSta1LocalPortRx = "12702";
+        }
+      else
+        {
+          // apply settings for connection with SDR / NI 802.11 Application Framework
+          niApiWifiSta1RemotePortTx = "12101";
+          niApiWifiSta1LocalPortRx = "12701";
+        }
+    }
+    else
+      {
+        // API settings complete, values passed by arguments
+        niApiWifiSta1RemoteIpAddrTx = niApiWifiSta1RemoteIpAddrTxTmp;
+        niApiWifiSta1RemotePortTx = niApiWifiSta1RemotePortTxTmp;
+        niApiWifiSta1LocalPortRx = niApiWifiSta1LocalPortRxTmp;
+      }
+    if (niApiWifiSta2RemoteIpAddrTxTmp.empty() || niApiWifiSta2RemotePortTxTmp.empty() || niApiWifiSta2LocalPortRxTmp.empty())
+      {
+        // API settings where empty or incomplete, assign defaults
+        niApiWifiSta2RemoteIpAddrTx = "127.0.0.1";
+        if (niApiWifiLoopbackEnabled)
+          {
+            // apply default settings for local loopback
+            niApiWifiSta2RemotePortTx = "12702";
+            niApiWifiSta2LocalPortRx = "12701";
+          }
+        else
+          {
+            // apply settings for connection with SDR / NI 802.11 Application Framework
+            niApiWifiSta2RemotePortTx = "12102";
+            niApiWifiSta2LocalPortRx = "12702";
+          }
+      }
+      else
+        {
+          // API settings complete, values passed by arguments
+          niApiWifiSta2RemoteIpAddrTx = niApiWifiSta2RemoteIpAddrTxTmp;
+          niApiWifiSta2RemotePortTx = niApiWifiSta2RemotePortTxTmp;
+          niApiWifiSta2LocalPortRx = niApiWifiSta2LocalPortRxTmp;
+        }
 
   // print ouf config parameters
   // TODO-NI: replace cout by NI_LOG_CONSOLE_INFO

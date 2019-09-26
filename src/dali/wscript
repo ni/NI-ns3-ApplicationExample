@@ -1,0 +1,49 @@
+## -*- Mode: python; py-indent-offset: 4; indent-tabs-mode: nil; coding: utf-8; -*-
+
+def build(bld):
+
+    dali_module_dependencies = ['core', 'tap-bridge']
+    if (bld.env['ENABLE_EMU']):
+        dali_module_dependencies.append('fd-net-device')
+    module = bld.create_ns3_module('dali', dali_module_dependencies)
+    module.source = [     
+        'model/epc-s1ap.cc',  
+        'model/epc-s1ap-header.cc',    
+        'model/epc-mme-application.cc',    
+        'model/dali-ue-dcx-sap.cc',
+        'model/dali-ue-dcx-header.cc',
+        'model/dali-ue-dcx.cc',
+        'model/dali-ue-pdcp.cc',
+        'model/dali-enb-pdcp.cc',
+        'helper/dali-lte-helper.cc'
+        ]
+
+    module_test = bld.create_ns3_module_test_library('dali')
+    module_test.source = [
+    	'test/dali-test-suite.cc',
+        ]
+
+    headers = bld(features='ns3header')
+    headers.module = 'dali'
+    headers.source = [
+        'model/epc-s1ap.h',  
+        'model/epc-s1ap-header.h',   
+        'model/epc-mme-application.h', 
+        'model/dali-ue-dcx-sap.h',   
+        'model/dali-ue-dcx-header.h',    
+        'model/dali-ue-dcx.h',
+        'model/dali-ue-pdcp.h',
+        'model/dali-enb-pdcp.h',
+        'helper/dali-lte-helper.h'
+        ]
+
+    if (bld.env['ENABLE_EMU']):
+        module.source.append ('helper/dali-emu-one-instance-epc-helper.cc')
+        headers.source.append ('helper/dali-emu-one-instance-epc-helper.h')
+        module.source.append ('helper/dali-emu-separated-instances-epc-helper.cc')
+        headers.source.append ('helper/dali-emu-separated-instances-epc-helper.h')
+
+    if (bld.env['ENABLE_EXAMPLES']):
+      bld.recurse('examples')
+
+    bld.ns3_python_bindings()

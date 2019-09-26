@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Nicola Baldo <nbaldo@cttc.es>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #ifndef LTE_RLC_H
@@ -27,6 +34,8 @@
 #include "ns3/traced-value.h"
 #include "ns3/trace-source-accessor.h"
 #include "ns3/nstime.h"
+#include <ns3/epc-x2-sap.h>
+#include <ns3/dali-ue-dcx-sap.h>
 
 #include "ns3/object.h"
 
@@ -50,7 +59,9 @@ namespace ns3 {
 class LteRlc : public Object // SimpleRefCount<LteRlc>
 {
   friend class LteRlcSpecificLteMacSapUser;
+  friend class EpcX2RlcSpecificUser<LteRlc>;
   friend class LteRlcSpecificLteRlcSapProvider<LteRlc>;
+  friend class UeDcxRlcSpecificUser<LteRlc>;
 public:
   LteRlc ();
   virtual ~LteRlc ();
@@ -84,6 +95,40 @@ public:
    * \return the RLC SAP Provider interface offered to the PDCP by this LTE_RLC
    */
   LteRlcSapProvider* GetLteRlcSapProvider ();
+  
+  /**
+   * Set the param needed for X2 tunneling
+   * \param the UeDataParams defined in RRC
+   */
+  void SetDcUeDataParams(EpcX2Sap::UeDataParams params);
+
+  /**
+   * \param s the EpcX2Rlc Provider to the Epc X2 interface
+   */
+  void SetEpcX2RlcProvider (EpcX2RlcProvider * s);
+
+  /**
+   * \return the EpcX2Rlc User, given to X2 to access Rlc SendDcPdcpPdu method
+   */
+  EpcX2RlcUser* GetEpcX2RlcUser ();
+
+
+  /**
+   * Set the param needed for DCX tunneling
+   * \param the UeDataParams defined in RRC
+   */
+  void SetDcUeDataParams(DaliUeDcxSap::UeDataParams params);
+
+  /**
+   * \param s the UeDcxRlc Provider to the UE DCX interface
+   */
+  void SetUeDcxRlcProvider (UeDcxRlcProvider * s);
+
+  /**
+   * \return the UeDcxRlc User, given to DCX to access Rlc SendDcPdcpPdu method
+   */
+  UeDcxRlcUser* GetUeDcxRlcUser ();
+
 
   /**
    *
@@ -138,6 +183,9 @@ protected:
   virtual void DoNotifyHarqDeliveryFailure () = 0;
   virtual void DoReceivePdu (Ptr<Packet> p) = 0;
 
+  virtual void DoSendDcPdcpSdu(EpcX2Sap::UeDataParams params) = 0;
+  virtual void DoSendDcPdcpSdu(DaliUeDcxSap::UeDataParams params) = 0;
+
   LteMacSapUser* m_macSapUser;
   LteMacSapProvider* m_macSapProvider;
 
@@ -152,6 +200,19 @@ protected:
    * Used to inform of a PDU reception from the MAC SAP user
    */
   TracedCallback<uint16_t, uint8_t, uint32_t, uint64_t> m_rxPdu;
+  
+  // DC functionalities
+  // UeDataParams needed to forward data to Secondary eNB
+  EpcX2Sap::UeDataParams m_ueX2DataParams;
+  bool isDcEnb;
+  EpcX2RlcProvider* m_epcX2RlcProvider;
+  EpcX2RlcUser* m_epcX2RlcUser;
+
+  // UeDataParams needed to forward data to Secondary UE
+  DaliUeDcxSap::UeDataParams m_ueDcxDataParams;
+  bool isDcUe;
+  UeDcxRlcProvider* m_ueDcxRlcProvider;
+  UeDcxRlcUser* m_ueDcxRlcUser;
 
 };
 
@@ -177,6 +238,8 @@ public:
   virtual void DoTransmitPdcpPdu (Ptr<Packet> p);
   virtual void DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harqId);
   virtual void DoNotifyHarqDeliveryFailure ();
+  virtual void DoSendDcPdcpSdu (EpcX2Sap::UeDataParams params);
+  virtual void DoSendDcPdcpSdu (DaliUeDcxSap::UeDataParams params);
   virtual void DoReceivePdu (Ptr<Packet> p);
 
 

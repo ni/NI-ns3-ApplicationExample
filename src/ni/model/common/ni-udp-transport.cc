@@ -35,12 +35,14 @@ namespace ns3
   {
     m_context = "none";
     m_rxApiThreadStop = true;
+    m_niApiDataEndOkCallback = MakeNullCallback< bool, uint8_t* >();
   }
 
   NiUdpTransport::NiUdpTransport (std::string context)
   {
     m_context = context;
     m_rxApiThreadStop = true;
+    m_niApiDataEndOkCallback = MakeNullCallback< bool, uint8_t* >();
   }
 
   NiUdpTransport::~NiUdpTransport ()
@@ -276,9 +278,14 @@ namespace ns3
               {
                 NI_LOG_DEBUG(m_context << " - Udp packet of size " << numBytesRx << " from ip addr=" << inet_ntoa(((struct sockaddr_in *)&rxAddr)->sin_addr) << " received.");
                 //PrintBufferU8(rxBuffer, 16);
-
+                // check im ns-3 is running
+                const bool ns3Running = ((Simulator::Now().GetMicroSeconds() > 0) || !(Simulator::GetContext () == Simulator::NO_CONTEXT));
+                const bool callbackValid = (m_niApiDataEndOkCallback != MakeNullCallback< bool, uint8_t* >());
                 // call function for rx packet processing
-                m_niApiDataEndOkCallback(m_pBufU8Rx + bufU8RxOffset);
+                if (callbackValid && ns3Running)
+                  {
+                    m_niApiDataEndOkCallback(m_pBufU8Rx + bufU8RxOffset);
+                  }
                 // switch to the next buffer entry
                 bufU8RxEntry = (bufU8RxEntry + 1) % m_numBufU8RxEntries;
                 //printf("%d, %d, %p\n", bufU8RxEntry, bufU8RxOffset, (m_pBufU8Rx + bufU8RxOffset));

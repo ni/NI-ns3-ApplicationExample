@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,6 +19,11 @@
  *
  * Author: Nicola Baldo <nbaldo@cttc.es>
  *         Budiarto Herman <budiarto.herman@magister.fi>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #ifndef LTE_UE_RRC_H
@@ -30,6 +37,7 @@
 #include <ns3/lte-ue-cphy-sap.h>
 #include <ns3/lte-rrc-sap.h>
 #include <ns3/traced-callback.h>
+#include <ns3/dali-ue-dcx-sap.h>
 
 #include <map>
 #include <set>
@@ -76,6 +84,7 @@ class LteUeRrc : public Object
   friend class MemberLteAsSapProvider<LteUeRrc>;
   friend class MemberLteUeCphySapUser<LteUeRrc>;
   friend class MemberLteUeRrcSapProvider<LteUeRrc>;
+  friend class UeDcxSpecificUeDcxSapUser<LteUeRrc>;
 
 public:
 
@@ -122,6 +131,31 @@ private:
 public:
   static TypeId GetTypeId (void);
 
+  /**
+   * Set the DCX SAP this RRC should interact with
+   * \param s the DCX SAP Provider to be used by this RRC entity
+   */
+  void SetUeDcxSapProvider (UeDcxSapProvider* s);
+
+  /**
+   * Get the DCX SAP offered by this RRC
+   * \return s the X2 SAP User interface offered to the X2 entity by this RRC entity
+   */
+  UeDcxSapUser* GetUeDcxSapUser ();
+
+  /**
+   * Set the DCX PDCP Provider this RRC should pass to PDCP layers
+   * \param s the DCX PDCP Provider to be stored in this RRC entity
+   */
+  void SetUeDcxPdcpProvider (UeDcxPdcpProvider* s);
+  UeDcxPdcpProvider* GetUeDcxPdcpProvider () const;
+
+  /**
+   * Set the DCX RLC Provider this RRC should pass to RLC layers
+   * \param s the DCX RLC Provider to be stored in this RRC entity
+   */
+  void SetUeDcxRlcProvider (UeDcxRlcProvider* s);
+  UeDcxRlcProvider* GetUeDcxRlcProvider() const;
 
   /**
    * set the CPHY SAP this RRC should use to interact with the PHY
@@ -239,6 +273,12 @@ public:
    */
   State GetState () const;
 
+  /**
+   *
+   * \return the DualConnectivity flag
+   */
+  bool GetIsDualConnectivity () const;
+  
   /** 
    * 
    * 
@@ -337,7 +377,41 @@ private:
   /// Part of the RRC protocol. Implement the LteUeRrcSapProvider::RecvRrcConnectionReject interface.
   void DoRecvRrcConnectionReject (LteRrcSap::RrcConnectionReject msg);
 
- 
+  // DCX SAP methods
+
+  /**
+   * Part of DALI DUAL CONNECTIVITY RRC protocol modification. Implement the UeDcxSapUser::RecvRrcDcConnectionReconfiguration interface.
+   * \param sourceImsi the Imsi of mUE
+   * \param targetImsi the Imsi of sUE
+   * \param msg the LteRrcSap::RrcConnectionReconfiguration
+   */
+  void DoRecvRrcDcConnectionReconfiguration (uint64_t sourceImsi, uint64_t targetImsi, LteRrcSap::RrcConnectionReconfiguration msg);
+
+  /**
+   * Part of DALI DUAL CONNECTIVITY RRC protocol modification. Implement the UeDcxSapUser::RecvRrcDcConnectionReconfigurationCompleted interface.
+   * \param sourceImsi the Imsi of sUE
+   * \param targetImsi the Imsi of MUE
+   * \param msg the LteRrcSap::RrcConnectionReconfigurationCompleted
+   */
+  void DoRecvRrcDcConnectionReconfigurationCompleted (uint64_t sourceImsi, uint64_t targetImsi, LteRrcSap::RrcConnectionReconfigurationCompleted msg);
+
+  /**
+   * Receive UE data function
+   *
+   * \param params UeDcxSapUser::UeDataParams
+   */
+  void DoRecvEnbData (UeDcxSapUser::UeDataParams params);
+
+  /// DcxTeidInfo structure
+    struct DcxTeidInfo
+    {
+      uint16_t rnti; ///< RNTI
+      uint8_t drbid; ///< DRBID
+    };
+
+    /// TEID, RNTI, DRBID
+    std::map<uint32_t, DcxTeidInfo> m_dcxTeidInfoMap; // for the DC devices
+
   // INTERNAL METHODS
 
   /**
@@ -942,7 +1016,31 @@ private:
    *        connection establishment procedure has failed.
    */
   void ConnectionTimeout ();
+  
+  /**
+   * \DALI specific member variables 
+   */
+  bool m_isSecondaryRRC;
+  bool m_isDualConnectivity;
+  bool m_usePdcpInSequenceDelivery;
+  bool m_splitBearerUe;
+  uint64_t m_targetImsi;
+  uint32_t m_DCgtpTeid;
 
+  //Allow to keep the information of drb od mUE when the bearer is splited and need to be configured in sUE
+  LteRrcSap::RrcConnectionReconfiguration m_msgRrcConnectionReconfiguration;
+
+  //Save the message of drb reconfiguration completed when it waits until sUE answer the configuration completed
+  LteRrcSap::RrcConnectionReconfigurationCompleted m_msgRrcConnectionReconfigurationCompleted;
+
+  /// Interface to receive messages from DC UE over the DCX interface.
+  UeDcxSapUser* m_dcxSapUser;
+  /// Interface to send messages to DC eNodeB over the DCX interface.
+  UeDcxSapProvider* m_dcxSapProvider;
+  /// Interface to be provided to PDCP
+  UeDcxPdcpProvider* m_dcxPdcpProvider;
+  /// Interface to be provided to RLC
+  UeDcxRlcProvider* m_dcxRlcProvider;
 }; // end of class LteUeRrc
 
 

@@ -101,7 +101,14 @@ typedef struct sNiLogInfo {
  * \param [in] msg The message to log.
  */
 #define NI_LOG_NONE(msg) \
-    NiLoggingLog(LOG__NONE, msg)
+    do                                        \
+      {                                       \
+        if (false)                            \
+          {                                   \
+            std::clog << msg;                 \
+          }                                   \
+      }                                       \
+    while (false)
 
 /**
  * Use \ref  to output a message of level LOG__FATAL.
@@ -195,11 +202,17 @@ typedef struct sNiLogInfo {
  */
 #define NiLoggingLog(LogLevel, msg) \
 {\
-  if(g_NiLogging.IsEnable() ) \
+  if(g_NiLogging.IsEnable()) \
     {\
       std::stringstream strStream;\
       strStream << msg;\
       g_NiLogging.Write (LogLevel, __FILE__, __LINE__, __func__, strStream.str());\
+    }\
+  else if (LogLevel == LOG__FATAL)\
+    {\
+      std::stringstream strStream;\
+      strStream << msg;\
+      g_NiLogging.WriteFatal (LogLevel, __FILE__, __LINE__, __func__, strStream.str());\
     }\
 }\
 
@@ -219,9 +232,11 @@ public:
   void Initialize (uint32_t logLevel, std::string fileName, int NiLoggingPriority);
   void DeInitialize (void);
   void Write (const enum NiLogLevel logLevel, const std::string file, const int line, const std::string func, const std::string &buffer);
-  bool IsEnable(void);
+  void WriteFatal (const enum NiLogLevel logLevel, const std::string file, const int line, const std::string func, const std::string &buffer);
+  inline bool IsEnable(void) {return m_logIsEnable;};
   void EnableSyncToFileInstant (void);
 private:
+  void Fatal(niLogInfo logInfo);
   void WriteToFile();
   void terminateWriteThread();
   void writeThread();

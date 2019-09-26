@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2012 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Manuel Requena <manuel.requena@cttc.es>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #include "ns3/log.h"
@@ -23,6 +30,7 @@
 #include "ns3/packet.h"
 #include "ns3/node.h"
 #include "ns3/epc-gtpu-header.h"
+#include "ns3/lte-pdcp-tag.h"
 
 #include "ns3/epc-x2-header.h"
 #include "ns3/epc-x2.h"
@@ -88,6 +96,8 @@ EpcX2::EpcX2 ()
   NS_LOG_FUNCTION (this);
 
   m_x2SapProvider = new EpcX2SpecificEpcX2SapProvider<EpcX2> (this);
+  m_x2PdcpProvider = new EpcX2PdcpSpecificProvider<EpcX2> (this);
+  m_x2RlcProvider = new EpcX2RlcSpecificProvider<EpcX2> (this);
 }
 
 EpcX2::~EpcX2 ()
@@ -102,7 +112,11 @@ EpcX2::DoDispose (void)
 
   m_x2InterfaceSockets.clear ();
   m_x2InterfaceCellIds.clear ();
+  m_x2RlcUserMap.clear ();
+  m_x2PdcpUserMap.clear ();
   delete m_x2SapProvider;
+  delete m_x2RlcProvider;
+  delete m_x2PdcpProvider;
 }
 
 TypeId
@@ -128,6 +142,41 @@ EpcX2::GetEpcX2SapProvider ()
   return m_x2SapProvider;
 }
 
+// Get and Set interfaces with PDCP and RLC
+EpcX2PdcpProvider*
+EpcX2::GetEpcX2PdcpProvider ()
+{
+  NS_LOG_FUNCTION(this);
+  return m_x2PdcpProvider;
+}
+
+EpcX2RlcProvider*
+EpcX2::GetEpcX2RlcProvider ()
+{
+  return m_x2RlcProvider;
+}
+
+void
+EpcX2::SetDcEpcX2RlcUser (uint32_t teid, EpcX2RlcUser* rlcUser)
+{
+  // TODO it may change (for the same teid) on handover between secondary cells, as in LteEnbRrc::RecvRlcSetupRequest
+  //NS_ASSERT_MSG(m_x2RlcUserMap.find(teid) == m_x2RlcUserMap.end(), "Teid " << teid
+  //  << " is already setup\n");
+  NS_LOG_INFO("Add EpcX2RlcUser for teid " << teid);
+  m_x2RlcUserMap[teid] = rlcUser;
+}
+
+void
+EpcX2::SetDcEpcX2PdcpUser (uint32_t teid, EpcX2PdcpUser* pdcpUser)
+{
+  // TODO it may change (for the same teid) on handover between secondary cells, as in LteEnbRrc::RecvRlcSetupRequest
+  //NS_ASSERT_MSG(m_x2PdcpUserMap.find(teid) == m_x2PdcpUserMap.end(), "Teid " << teid
+  //  << " is already setup\n");
+  NS_LOG_INFO("Add EpcX2PdcpUser for teid " << teid);
+  m_x2PdcpUserMap[teid] = pdcpUser;
+}
+
+// Add X2 endpoint
 
 void
 EpcX2::AddX2Interface (uint16_t localCellId, Ipv4Address localX2Address, uint16_t remoteCellId, Ipv4Address remoteX2Address)
@@ -360,6 +409,54 @@ EpcX2::RecvFromX2cSocket (Ptr<Socket> socket)
           m_x2SapUser->RecvResourceStatusUpdate (params);
         }
     }
+  else if (procedureCode == EpcX2Header::RlcSetupRequest)
+    {
+      NS_LOG_LOGIC ("Recv X2 message: RLC SETUP REQUEST");
+
+      EpcX2RlcSetupRequestHeader x2RlcHeader;
+      packet->RemoveHeader (x2RlcHeader);
+
+      NS_LOG_INFO ("X2 RlcSetupRequest header: " << x2RlcHeader);
+
+      EpcX2SapUser::RlcSetupRequest params;
+      params.targetCellId = x2RlcHeader.GetTargetCellId();
+      params.sourceCellId = x2RlcHeader.GetSourceCellId ();
+      params.secondaryRnti = x2RlcHeader.GetSecondaryRnti ();
+      params.gtpTeid = x2RlcHeader.GetGtpTeid ();
+      params.masterRnti = x2RlcHeader.GetMasterRnti ();
+      params.drbid = x2RlcHeader.GetDrbid ();
+      params.lcinfo = x2RlcHeader.GetLcInfo();
+      params.rlcConfig = x2RlcHeader.GetRlcConfig();
+      params.logicalChannelConfig = x2RlcHeader.GetLogicalChannelConfig();
+
+      NS_LOG_LOGIC ("GtpTeid = " << params.gtpTeid);
+      NS_LOG_LOGIC ("SecondaryRnti = " << params.secondaryRnti);
+      NS_LOG_LOGIC ("SourceCellID = " << params.sourceCellId);
+      NS_LOG_LOGIC ("TargetCellID = " << params.targetCellId);
+      NS_LOG_LOGIC ("Drbid = " << params.drbid);
+
+      m_x2SapUser->RecvRlcSetupRequest (params);
+    }
+  else if (procedureCode == EpcX2Header::RlcSetupCompleted)
+    {
+      NS_LOG_LOGIC ("Recv X2 message: RLC SETUP COMPLETED");
+
+      EpcX2RlcSetupCompletedHeader x2RlcHeader;
+      packet->RemoveHeader (x2RlcHeader);
+
+      NS_LOG_INFO ("X2 RlcSetupCompleted header: " << x2RlcHeader);
+
+      EpcX2SapUser::UeDataParams params;
+      params.targetCellId = x2RlcHeader.GetTargetCellId();
+      params.sourceCellId = x2RlcHeader.GetSourceCellId ();
+      params.gtpTeid = x2RlcHeader.GetGtpTeid ();
+
+      NS_LOG_LOGIC ("GtpTeid = " << params.gtpTeid);
+      NS_LOG_LOGIC ("SourceCellID = " << params.sourceCellId);
+      NS_LOG_LOGIC ("TargetCellID = " << params.targetCellId);
+
+      m_x2SapUser->RecvRlcSetupCompleted (params);
+    }
   else
     {
       NS_ASSERT_MSG (false, "ProcedureCode NOT SUPPORTED!!!");
@@ -380,6 +477,9 @@ EpcX2::RecvFromX2uSocket (Ptr<Socket> socket)
                  "Missing infos of local and remote CellId");
   Ptr<X2CellInfo> cellsInfo = m_x2InterfaceCellIds [socket];
 
+  NS_LOG_INFO("localCellId = " << cellsInfo->m_localCellId);
+  NS_LOG_INFO("remoteCellId = " << cellsInfo->m_remoteCellId);
+
   GtpuHeader gtpu;
   packet->RemoveHeader (gtpu);
 
@@ -391,9 +491,36 @@ EpcX2::RecvFromX2uSocket (Ptr<Socket> socket)
   params.gtpTeid = gtpu.GetTeid ();
   params.ueData = packet;
 
-  m_x2SapUser->RecvUeData (params);
-}
+  NS_LOG_LOGIC("Received packet on X2 u, size " << packet->GetSize() 
+    << " source " << params.sourceCellId << " target " << params.targetCellId << " type " << gtpu.GetMessageType());
 
+  if(gtpu.GetMessageType() == EpcX2Header::DcForwardDownlinkData)
+  {
+    // add PdcpTag
+    PdcpTag pdcpTag (Simulator::Now ());
+    params.ueData->AddByteTag (pdcpTag);
+    // call rlc interface
+    EpcX2RlcUser* user = m_x2RlcUserMap.find(params.gtpTeid)->second;
+    if(user != 0)
+    {
+      user -> SendDcPdcpSdu(params);
+    }
+    else
+    {
+      NS_LOG_INFO("Not implemented: Forward to the other cell");
+    }
+  } 
+  else if (gtpu.GetMessageType() == EpcX2Header::DcForwardUplinkData)
+  {
+    // call pdcp interface
+    NS_LOG_INFO("Call PDCP interface");
+    m_x2PdcpUserMap[params.gtpTeid] -> ReceiveDcPdcpPdu(params);
+  }
+  else
+  {
+    m_x2SapUser->RecvUeData (params);
+  }  
+}
 
 //
 // Implementation of the X2 SAP Provider
@@ -448,6 +575,104 @@ EpcX2::DoSendHandoverRequest (EpcX2SapProvider::HandoverRequestParams params)
   sourceSocket->SendTo (packet, 0, InetSocketAddress (targetIpAddr, m_x2cUdpPort));
 }
 
+void
+EpcX2::DoSendRlcSetupRequest (EpcX2SapProvider::RlcSetupRequest params)
+{
+  NS_LOG_FUNCTION (this);
+
+  NS_LOG_LOGIC ("sourceCellId = " << params.sourceCellId);
+  NS_LOG_LOGIC ("targetCellId = " << params.targetCellId);
+  NS_LOG_LOGIC ("teid  = " << params.gtpTeid);
+  NS_LOG_LOGIC ("rnti = " << params.secondaryRnti);
+
+  NS_ASSERT_MSG (m_x2InterfaceSockets.find (params.targetCellId) != m_x2InterfaceSockets.end (),
+                 "Missing infos for targetCellId = " << params.targetCellId);
+  Ptr<X2IfaceInfo> socketInfo = m_x2InterfaceSockets [params.targetCellId];
+  Ptr<Socket> sourceSocket = socketInfo->m_localCtrlPlaneSocket;
+  Ipv4Address targetIpAddr = socketInfo->m_remoteIpAddr;
+
+  NS_LOG_LOGIC ("sourceSocket = " << sourceSocket);
+  NS_LOG_LOGIC ("targetIpAddr = " << targetIpAddr);
+
+  NS_LOG_INFO ("Send X2 message: RLC SETUP REQUEST");
+
+  // Build the X2 message
+  EpcX2RlcSetupRequestHeader x2RlcHeader;
+  x2RlcHeader.SetSourceCellId(params.sourceCellId);
+  x2RlcHeader.SetTargetCellId(params.targetCellId);
+  x2RlcHeader.SetGtpTeid(params.gtpTeid);
+  x2RlcHeader.SetSecondaryRnti(params.secondaryRnti);
+  x2RlcHeader.SetMasterRnti(params.masterRnti);
+  x2RlcHeader.SetDrbid(params.drbid);
+  x2RlcHeader.SetLcInfo(params.lcinfo);
+  x2RlcHeader.SetRlcConfig(params.rlcConfig);
+  x2RlcHeader.SetLogicalChannelConfig(params.logicalChannelConfig);
+
+  EpcX2Header x2Header;
+  x2Header.SetMessageType (EpcX2Header::InitiatingMessage);
+  x2Header.SetProcedureCode (EpcX2Header::RlcSetupRequest);
+  x2Header.SetLengthOfIes (x2RlcHeader.GetLengthOfIes ());
+  x2Header.SetNumberOfIes (x2RlcHeader.GetNumberOfIes ());
+
+  NS_LOG_INFO ("X2 header: " << x2Header);
+  NS_LOG_INFO ("X2 RlcSetupRequest header: " << x2RlcHeader);
+
+  // Build the X2 packet
+  Ptr<Packet> packet = Create <Packet> ();
+  packet->AddHeader (x2RlcHeader);
+  packet->AddHeader (x2Header);
+
+  NS_LOG_INFO ("packetLen = " << packet->GetSize ());
+
+  // Send the X2 message through the socket
+  sourceSocket->SendTo (packet, 0, InetSocketAddress (targetIpAddr, m_x2cUdpPort));
+}
+
+void
+EpcX2::DoSendRlcSetupCompleted (EpcX2Sap::UeDataParams params)
+{
+  NS_LOG_FUNCTION (this);
+
+  NS_LOG_LOGIC ("sourceCellId = " << params.sourceCellId);
+  NS_LOG_LOGIC ("targetCellId = " << params.targetCellId);
+  NS_LOG_LOGIC ("teid  = " << params.gtpTeid);
+
+  NS_ASSERT_MSG (m_x2InterfaceSockets.find (params.targetCellId) != m_x2InterfaceSockets.end (),
+                 "Missing infos for targetCellId = " << params.targetCellId);
+  Ptr<X2IfaceInfo> socketInfo = m_x2InterfaceSockets [params.targetCellId];
+  Ptr<Socket> sourceSocket = socketInfo->m_localCtrlPlaneSocket;
+  Ipv4Address targetIpAddr = socketInfo->m_remoteIpAddr;
+
+  NS_LOG_LOGIC ("sourceSocket = " << sourceSocket);
+  NS_LOG_LOGIC ("targetIpAddr = " << targetIpAddr);
+
+  NS_LOG_INFO ("Send X2 message: RLC SETUP COMPLETED");
+
+  // Build the X2 message
+  EpcX2RlcSetupCompletedHeader x2RlcHeader;
+  x2RlcHeader.SetSourceCellId(params.sourceCellId);
+  x2RlcHeader.SetTargetCellId(params.targetCellId);
+  x2RlcHeader.SetGtpTeid(params.gtpTeid);
+
+  EpcX2Header x2Header;
+  x2Header.SetMessageType (EpcX2Header::InitiatingMessage);
+  x2Header.SetProcedureCode (EpcX2Header::RlcSetupCompleted);
+  x2Header.SetLengthOfIes (x2RlcHeader.GetLengthOfIes ());
+  x2Header.SetNumberOfIes (x2RlcHeader.GetNumberOfIes ());
+
+  NS_LOG_INFO ("X2 header: " << x2Header);
+  NS_LOG_INFO ("X2 RlcSetupCompleted header: " << x2RlcHeader);
+
+  // Build the X2 packet
+  Ptr<Packet> packet = Create <Packet> ();
+  packet->AddHeader (x2RlcHeader);
+  packet->AddHeader (x2Header);
+
+  NS_LOG_INFO ("packetLen = " << packet->GetSize ());
+
+  // Send the X2 message through the socket
+  sourceSocket->SendTo (packet, 0, InetSocketAddress (targetIpAddr, m_x2cUdpPort));
+}
 
 void
 EpcX2::DoSendHandoverRequestAck (EpcX2SapProvider::HandoverRequestAckParams params)
@@ -759,6 +984,70 @@ EpcX2::DoSendUeData (EpcX2SapProvider::UeDataParams params)
 
   NS_LOG_INFO ("Forward UE DATA through X2 interface");
   sourceSocket->SendTo (packet, 0, InetSocketAddress (targetIpAddr, m_x2uUdpPort));
+}
+
+void
+EpcX2::DoSendDcPdcpPdu(EpcX2Sap::UeDataParams params)
+{
+  NS_LOG_FUNCTION (this);
+
+  NS_LOG_LOGIC ("sourceCellId = " << params.sourceCellId);
+  NS_LOG_LOGIC ("targetCellId = " << params.targetCellId);
+  NS_LOG_LOGIC ("gtpTeid = " << params.gtpTeid);
+
+  NS_ASSERT_MSG (m_x2InterfaceSockets.find (params.targetCellId) != m_x2InterfaceSockets.end (),
+                 "Missing infos for targetCellId = " << params.targetCellId);
+  Ptr<X2IfaceInfo> socketInfo = m_x2InterfaceSockets [params.targetCellId];
+  Ptr<Socket> sourceSocket = socketInfo->m_localUserPlaneSocket;
+  Ipv4Address targetIpAddr = socketInfo->m_remoteIpAddr;
+
+  NS_LOG_LOGIC ("sourceSocket = " << sourceSocket);
+  NS_LOG_LOGIC ("targetIpAddr = " << targetIpAddr);
+
+  // add a message type to the gtpu header, so that it is possible to distinguish at receiver
+  GtpuHeader gtpu;
+  gtpu.SetTeid (params.gtpTeid);
+  gtpu.SetMessageType(EpcX2Header::DcForwardDownlinkData);
+  gtpu.SetLength (params.ueData->GetSize () + gtpu.GetSerializedSize () - 8); /// \todo This should be done in GtpuHeader
+  NS_LOG_INFO ("GTP-U header: " << gtpu);
+
+  Ptr<Packet> packet = params.ueData;
+  packet->AddHeader (gtpu);
+
+  NS_LOG_INFO ("Forward DC UE DATA through X2 interface");
+  sourceSocket->SendTo (packet, 0, InetSocketAddress (targetIpAddr, m_x2uUdpPort));  
+}
+
+void
+EpcX2::DoReceiveDcPdcpSdu(EpcX2Sap::UeDataParams params)
+{
+  NS_LOG_FUNCTION (this);
+
+  NS_LOG_LOGIC ("sourceCellId = " << params.sourceCellId);
+  NS_LOG_LOGIC ("targetCellId = " << params.targetCellId);
+  NS_LOG_LOGIC ("gtpTeid = " << params.gtpTeid);
+
+  NS_ASSERT_MSG (m_x2InterfaceSockets.find (params.targetCellId) != m_x2InterfaceSockets.end (),
+                 "Missing infos for targetCellId = " << params.targetCellId);
+  Ptr<X2IfaceInfo> socketInfo = m_x2InterfaceSockets [params.targetCellId];
+  Ptr<Socket> sourceSocket = socketInfo->m_localUserPlaneSocket;
+  Ipv4Address targetIpAddr = socketInfo->m_remoteIpAddr;
+
+  NS_LOG_LOGIC ("sourceSocket = " << sourceSocket);
+  NS_LOG_LOGIC ("targetIpAddr = " << targetIpAddr);
+
+  // add a message type to the gtpu header, so that it is possible to distinguish at receiver
+  GtpuHeader gtpu;
+  gtpu.SetTeid (params.gtpTeid);
+  gtpu.SetMessageType(EpcX2Header::DcForwardUplinkData);
+  gtpu.SetLength (params.ueData->GetSize () + gtpu.GetSerializedSize () - 8); /// \todo This should be done in GtpuHeader
+  NS_LOG_INFO ("GTP-U header: " << gtpu);
+
+  Ptr<Packet> packet = params.ueData;
+  packet->AddHeader (gtpu);
+
+  NS_LOG_INFO ("Forward MC UE DATA through X2 interface");
+  sourceSocket->SendTo (packet, 0, InetSocketAddress (targetIpAddr, m_x2uUdpPort));  
 }
 
 } // namespace ns3

@@ -79,6 +79,12 @@ public:
    */
   LteUePhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy);
 
+  /**
+   * ORCA-DALI new constructor, which allow the definition of ns3DevType
+   * \param ns3DevType, identifies in what device NI API have to be installed (NIAPI_NONE identifies fake node)
+   */
+  LteUePhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy, Ns3LteDevType_t ns3DevType);
+
   virtual ~LteUePhy ();
 
   // inherited from Object
@@ -327,6 +333,9 @@ private:
   virtual void DoSendMacPdu (Ptr<Packet> p);
   virtual void DoSendLteControlMessage (Ptr<LteControlMessage> msg);
   virtual void DoSendRachPreamble (uint32_t prachId, uint32_t raRnti);
+
+  // NI API CHANGE
+  void NiApiPhyTimingIndReceived (uint16_t frameNr, uint8_t subFrameNr, bool firstRun);
 
   /// A list of sub channels to use in TX.
   std::vector <int> m_subChannelsForTransmission;

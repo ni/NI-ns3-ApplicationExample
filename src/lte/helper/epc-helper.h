@@ -136,6 +136,30 @@ public:
    */
   virtual Ipv4Address GetUeDefaultGatewayAddress () = 0;
 
+  /**
+   * New for DALI Dual Connectivity
+   * Notify the EPC of the existence of a new Dual Connectivity UE which might attach at a later time
+   *
+   * \param ue the UE the previously created UE node
+   * \param ueLteDevice the UE device to be attached
+   * \param imsi the unique identifier of the UE
+   */
+
+  virtual void AddDaliUe (Ptr<Node> ue, Ptr<NetDevice> ueLteDevice, uint64_t imsi)
+  {
+  };
+
+  /**
+   * New for DALI Dual Connectivity
+   * Add an DCX interface between two UE
+   *
+   * \param ueNode1 one UE peer of the DCX interface
+   * \param ueNode2 the other UE peer of the DCX interface
+   */
+  virtual void AddDcxInterface (Ptr<Node> ueNode1, Ptr<Node> ueNode2)
+  {
+  };
+
 
 };
 

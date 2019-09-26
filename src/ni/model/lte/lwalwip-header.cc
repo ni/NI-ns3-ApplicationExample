@@ -110,7 +110,8 @@ uint32_t
 LwaLwipHeader::GetSerializedSize (void) const
 {
   NS_LOG_FUNCTION (this);
-  return 4;
+  const uint32_t numUint32ToBeSerialized = 3;
+  return (sizeof(uint32_t) * numUint32ToBeSerialized);
 }
 
 void

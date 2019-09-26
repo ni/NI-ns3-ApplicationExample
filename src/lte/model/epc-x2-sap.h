@@ -1,6 +1,8 @@
 /* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2012 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Manuel Requena <manuel.requena@cttc.es>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #ifndef EPC_X2_SAP_H
@@ -24,6 +31,8 @@
 #include "ns3/packet.h"
 #include "ns3/eps-bearer.h"
 #include "ns3/ipv4-address.h"
+#include <ns3/lte-rrc-sap.h>
+#include <ns3/lte-enb-cmac-sap.h>
 
 #include <bitset>
 
@@ -216,7 +225,25 @@ public:
     TimeCriticalHandover
   };
 
-
+  /**
+   * \brief Parameters of the RlcSetupRequest to handle DALI dual connectivity, based on MC implementation
+   *
+   * Forward UE params during the DC setup
+   */
+  struct RlcSetupRequest
+  {
+    uint16_t    sourceCellId;
+    uint16_t    targetCellId;
+    uint32_t    gtpTeid;
+    uint16_t    secondaryRnti;
+    uint16_t    masterRnti;
+    uint8_t     drbid;
+    LteEnbCmacSapProvider::LcInfo lcinfo;
+    LteRrcSap::RlcConfig rlcConfig;
+    LteRrcSap::LogicalChannelConfig logicalChannelConfig;
+    TypeId      rlcType;
+  };
+  
   /**
    * \brief Parameters of the HANDOVER REQUEST message.
    *
@@ -332,6 +359,68 @@ public:
 
 };
 
+/**
+ * DALI DC primitives, based on MC implementation. Part of X2 entity, called by PDCP.
+ */
+class EpcX2PdcpProvider : public EpcX2Sap
+{
+public:
+  virtual ~EpcX2PdcpProvider ();
+
+  /*
+   * Service primitives
+   */
+  // X2 sends a Pdcp PDU in downlink to the SeNB for transmission to the sUE
+  virtual void SendDcPdcpPdu (UeDataParams params) = 0;
+};
+
+
+/**
+ * DALI DC primitives, based on MC implementation. Part of PDCP entity, called by X2
+ */
+class EpcX2PdcpUser : public EpcX2Sap
+{
+public:
+  virtual ~EpcX2PdcpUser ();
+
+  /*
+   * Service primitives
+   */
+  // Receive a PDCP PDU in uplink from the SeNB for transmission to CN
+  virtual void ReceiveDcPdcpPdu (UeDataParams params) = 0;
+};
+
+
+/**
+ * DALI DC primitives, based on MC implementation. Part of X2 entity, called by RLC
+ */
+class EpcX2RlcProvider : public EpcX2Sap
+{
+public:
+  virtual ~EpcX2RlcProvider ();
+
+  /*
+   * Service primitives
+   */
+  // Receive a PDCP SDU from RLC for uplink transmission to PDCP in MeNB
+  virtual void ReceiveDcPdcpSdu (UeDataParams params) = 0;
+};
+
+
+/**
+ * DALI DC primitives, based on MC implementation. Part of RLC entity, called by X2
+ */
+class EpcX2RlcUser : public EpcX2Sap
+{
+public:
+  virtual ~EpcX2RlcUser ();
+
+  /*
+   * Service primitives
+   */
+  // X2 sends a PDCP SDU to RLC for downlink transmission to the UE
+  virtual void SendDcPdcpSdu (UeDataParams params) = 0;
+};
 
 /**
  * These service primitives of this part of the X2 SAP
@@ -361,6 +450,15 @@ public:
   virtual void SendResourceStatusUpdate (ResourceStatusUpdateParams params) = 0;
 
   virtual void SendUeData (UeDataParams params) = 0;
+  
+  virtual void SetEpcX2PdcpUser (uint32_t teid, EpcX2PdcpUser * s) = 0;
+
+  virtual void SetEpcX2RlcUser (uint32_t teid, EpcX2RlcUser * s) = 0;
+
+  virtual void SendRlcSetupRequest (RlcSetupRequest params) = 0;
+
+  virtual void SendRlcSetupCompleted (UeDataParams params) = 0;
+  
 };
 
 
@@ -377,50 +475,135 @@ public:
    * Service primitives
    */
 
+  /**
+   * Receive handover request function
+   * \param params the handover request parameters
+   */
   virtual void RecvHandoverRequest (HandoverRequestParams params) = 0;
 
+  /**
+   * Receive handover request ack function
+   * \param params the handover request ack parameters
+   */
   virtual void RecvHandoverRequestAck (HandoverRequestAckParams params) = 0;
-
+  
+  /**
+   * Receive handover preparation failure function
+   * \param params the handover preparation failure parameters
+   */
   virtual void RecvHandoverPreparationFailure (HandoverPreparationFailureParams params) = 0;
-
+  
+  /**
+   * Receive SN status transfer function
+   * \param params the SN status transfer parameters
+   */
   virtual void RecvSnStatusTransfer (SnStatusTransferParams params) = 0;
-
+  
+  /**
+   * Receive UE context release function
+   * \param params the receive UE context release parameters
+   */
   virtual void RecvUeContextRelease (UeContextReleaseParams params) = 0;
 
+  /**
+   * Receive load information function
+   * \param params the load information parameters
+   */
   virtual void RecvLoadInformation (LoadInformationParams params) = 0;
-  
+
+  /**
+   * Receive resource status update function
+   * \param params the resource status update parameters
+   */
   virtual void RecvResourceStatusUpdate (ResourceStatusUpdateParams params) = 0;
 
+  virtual void RecvRlcSetupRequest (RlcSetupRequest params) = 0;
+
+  virtual void RecvRlcSetupCompleted (UeDataParams params) = 0;
+
+  /**
+   * Receive UE data function
+   * \param params UE data parameters
+   */
   virtual void RecvUeData (UeDataParams params) = 0;
+  
 };
 
 ///////////////////////////////////////
 
+/**
+ * EpcX2SpecificEpcX2SapProvider
+ */
 template <class C>
 class EpcX2SpecificEpcX2SapProvider : public EpcX2SapProvider
 {
 public:
+  /**
+   * Constructor
+   *
+   * \param x2 the owner class
+   */
   EpcX2SpecificEpcX2SapProvider (C* x2);
 
   //
   // Interface implemented from EpcX2SapProvider
   //
 
+  /**
+   * Send handover request function
+   * \param params the hadnover request parameters
+   */
   virtual void SendHandoverRequest (HandoverRequestParams params);
 
+  /**
+   * Send handover request ack function
+   * \param params the handover request ack pararameters
+   */
   virtual void SendHandoverRequestAck (HandoverRequestAckParams params);
 
+  /**
+   * Send handover preparation failure function
+   * \param params the handover preparation failure parameters
+   */
   virtual void SendHandoverPreparationFailure (HandoverPreparationFailureParams params);
 
+  /**
+   * Send SN status transfer function
+   * \param params the SN status transfer parameters
+   */
   virtual void SendSnStatusTransfer (SnStatusTransferParams params);
 
+  /**
+   * Send UE context release function
+   * \param params the UE context release parameters
+   */
   virtual void SendUeContextRelease (UeContextReleaseParams params);
 
+  /**
+   * Send load information function
+   * \param params the load information parameters
+   */
   virtual void SendLoadInformation (LoadInformationParams params);
 
+  /**
+   * Send resource status update function
+   * \param params the resource status update parameters
+   */
   virtual void SendResourceStatusUpdate (ResourceStatusUpdateParams params);
 
+  /**
+   * Send UE data function
+   * \param params the UE data parameters
+   */
   virtual void SendUeData (UeDataParams params);
+
+  virtual void SetEpcX2PdcpUser (uint32_t teid, EpcX2PdcpUser * s);
+
+  virtual void SetEpcX2RlcUser (uint32_t teid, EpcX2RlcUser * s);
+
+  virtual void SendRlcSetupRequest (RlcSetupRequest params);
+
+  virtual void SendRlcSetupCompleted (UeDataParams params);
 
 private:
   EpcX2SpecificEpcX2SapProvider ();
@@ -494,32 +677,107 @@ EpcX2SpecificEpcX2SapProvider<C>::SendUeData (UeDataParams params)
   m_x2->DoSendUeData (params);
 }
 
+/**
+ * EpcX2SpecificEpcX2SapUser
+ */
+template <class C>
+void
+EpcX2SpecificEpcX2SapProvider<C>::SetEpcX2RlcUser (uint32_t teid, EpcX2RlcUser * s)
+{
+  m_x2->SetDcEpcX2RlcUser (teid, s);
+}
+
+template <class C>
+void
+EpcX2SpecificEpcX2SapProvider<C>::SetEpcX2PdcpUser (uint32_t teid, EpcX2PdcpUser * s)
+{
+  m_x2->SetDcEpcX2PdcpUser (teid, s);
+}
+
+template <class C>
+void
+EpcX2SpecificEpcX2SapProvider<C>::SendRlcSetupRequest (RlcSetupRequest params)
+{
+  m_x2->DoSendRlcSetupRequest (params);
+}
+
+template <class C>
+void
+EpcX2SpecificEpcX2SapProvider<C>::SendRlcSetupCompleted (UeDataParams params)
+{
+  m_x2->DoSendRlcSetupCompleted (params);
+}
+
 ///////////////////////////////////////
 
+/**
+ * EpcX2SpecificEpcX2SapUser
+ */
 template <class C>
 class EpcX2SpecificEpcX2SapUser : public EpcX2SapUser
 {
 public:
+ /**
+   * Constructor
+   *
+   * \param rrc RRC
+   */
   EpcX2SpecificEpcX2SapUser (C* rrc);
 
   //
   // Interface implemented from EpcX2SapUser
   //
 
+  /**
+   * Receive handover request function
+   * \param params the receive handover request parameters
+   */
   virtual void RecvHandoverRequest (HandoverRequestParams params);
 
+  /**
+   * Receive handover request ack function
+   * \param params the receive handover request ack parameters
+   */
   virtual void RecvHandoverRequestAck (HandoverRequestAckParams params);
 
+  /**
+   * Receive handover preparation failure function
+   * \param params the receive handover preparation failure parameters
+   */
   virtual void RecvHandoverPreparationFailure (HandoverPreparationFailureParams params);
 
+  /**
+   * Receive SN status transfer function
+   * \param params the SN status transfer parameters
+   */
   virtual void RecvSnStatusTransfer (SnStatusTransferParams params);
 
+  /**
+   * Receive UE context release function
+   * \param params the UE context release parameters
+   */
   virtual void RecvUeContextRelease (UeContextReleaseParams params);
 
+  /**
+   * Receive load information function
+   * \param params the load information parameters
+   */
   virtual void RecvLoadInformation (LoadInformationParams params);
 
+  /**
+   * Receive resource status update function
+   * \param params the receive resource status update
+   */
   virtual void RecvResourceStatusUpdate (ResourceStatusUpdateParams params);
 
+  virtual void RecvRlcSetupRequest (RlcSetupRequest params);
+
+  virtual void RecvRlcSetupCompleted (UeDataParams params);
+
+  /**
+   * Receive UE data function
+   * \param params the UE data parameters
+   */
   virtual void RecvUeData (UeDataParams params);
 
 private:
@@ -589,9 +847,156 @@ EpcX2SpecificEpcX2SapUser<C>::RecvResourceStatusUpdate (ResourceStatusUpdatePara
 
 template <class C>
 void
+EpcX2SpecificEpcX2SapUser<C>::RecvRlcSetupRequest (RlcSetupRequest params)
+{
+  m_rrc->DoRecvRlcSetupRequest (params);
+}
+
+template <class C>
+void
+EpcX2SpecificEpcX2SapUser<C>::RecvRlcSetupCompleted (UeDataParams params)
+{
+  m_rrc->DoRecvRlcSetupCompleted (params);
+}
+
+template <class C>
+void
 EpcX2SpecificEpcX2SapUser<C>::RecvUeData (UeDataParams params)
 {
   m_rrc->DoRecvUeData (params);
+}
+
+/////////////////////////////////////////////
+
+template <class C>
+class EpcX2PdcpSpecificProvider : public EpcX2PdcpProvider
+{
+public:
+  EpcX2PdcpSpecificProvider (C* x2);
+
+  // Inherited
+  virtual void SendDcPdcpPdu (UeDataParams params);
+
+private:
+  EpcX2PdcpSpecificProvider ();
+  C* m_x2;
+};
+
+template <class C>
+EpcX2PdcpSpecificProvider<C>::EpcX2PdcpSpecificProvider (C* x2)
+  : m_x2 (x2)
+{
+}
+
+template <class C>
+EpcX2PdcpSpecificProvider<C>::EpcX2PdcpSpecificProvider ()
+{
+}
+
+template <class C>
+void
+EpcX2PdcpSpecificProvider<C>::SendDcPdcpPdu(UeDataParams params)
+{
+  m_x2->DoSendDcPdcpPdu(params);
+}
+
+/////////////////////////////////////////////
+template <class C>
+class EpcX2RlcSpecificProvider : public EpcX2RlcProvider
+{
+public:
+  EpcX2RlcSpecificProvider (C* x2);
+
+  // Inherited
+  virtual void ReceiveDcPdcpSdu (UeDataParams params);
+
+private:
+  EpcX2RlcSpecificProvider ();
+  C* m_x2;
+};
+
+template <class C>
+EpcX2RlcSpecificProvider<C>::EpcX2RlcSpecificProvider (C* x2)
+  : m_x2 (x2)
+{
+}
+
+template <class C>
+EpcX2RlcSpecificProvider<C>::EpcX2RlcSpecificProvider ()
+{
+}
+
+template <class C>
+void
+EpcX2RlcSpecificProvider<C>::ReceiveDcPdcpSdu(UeDataParams params)
+{
+  m_x2->DoReceiveDcPdcpSdu(params);
+}
+
+/////////////////////////////////////////////
+template <class C>
+class EpcX2PdcpSpecificUser : public EpcX2PdcpUser
+{
+public:
+  EpcX2PdcpSpecificUser (C* pdcp);
+
+  // Inherited
+  virtual void ReceiveDcPdcpPdu (UeDataParams params);
+
+private:
+  EpcX2PdcpSpecificUser ();
+  C* m_pdcp;
+};
+
+template <class C>
+EpcX2PdcpSpecificUser<C>::EpcX2PdcpSpecificUser (C* pdcp)
+  : m_pdcp (pdcp)
+{
+}
+
+template <class C>
+EpcX2PdcpSpecificUser<C>::EpcX2PdcpSpecificUser ()
+{
+}
+
+template <class C>
+void
+EpcX2PdcpSpecificUser<C>::ReceiveDcPdcpPdu(UeDataParams params)
+{
+  m_pdcp->DoReceiveDcPdcpPdu(params);
+}
+
+/////////////////////////////////////////////
+template <class C>
+class EpcX2RlcSpecificUser : public EpcX2RlcUser
+{
+public:
+  EpcX2RlcSpecificUser (C* rlc);
+
+  // Inherited
+  virtual void SendDcPdcpSdu (UeDataParams params);
+
+private:
+  EpcX2RlcSpecificUser ();
+  C* m_rlc;
+};
+
+template <class C>
+EpcX2RlcSpecificUser<C>::EpcX2RlcSpecificUser (C* rlc)
+  : m_rlc (rlc)
+{
+}
+
+template <class C>
+EpcX2RlcSpecificUser<C>::EpcX2RlcSpecificUser ()
+{
+}
+
+template <class C>
+void
+EpcX2RlcSpecificUser<C>::SendDcPdcpSdu(UeDataParams params)
+{
+  m_rlc->DoSendDcPdcpSdu(params);
 }
 
 } // namespace ns3

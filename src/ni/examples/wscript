@@ -21,3 +21,8 @@ def build(bld):
         obj = bld.create_ns3_program('ni-remote-control-simple',
             ['lte', 'ni'])
         obj.source = 'ni-remote-control-simple.cc'
+        
+        if bld.env['ENABLE_EMU']:
+            obj = bld.create_ns3_program('ni-lte-simple-dc',
+                                         ['lte', 'fd-net-device', 'core', 'network', 'config-store', 'wifi', 'mobility', 'internet','point-to-point', 'stats', 'applications', 'ni'])
+            obj.source = 'ni-lte-simple-dc.cc'

@@ -1064,6 +1064,7 @@ ApWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
                   SendAssocResp (hdr->GetAddr2 (), true);
 
                   NI_LOG_DEBUG("ApWifiMac::Receive: SendAssocResp with success");
+                  if (!NI_LOG_ENABLED) NI_LOG_CONSOLE_INFO("AP ASSOCIATED");
                 }
               return;
             }

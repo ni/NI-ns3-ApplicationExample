@@ -111,6 +111,7 @@ namespace ns3
     m_rnti(0),
     m_mcs(0),
     m_tbsSize(0),
+    m_firstPhyTimingInd(false),
     m_sfnSfOffset(0),
     m_lastTimingIndTimeUs(0),
     m_niLteSdrTimingSync(CreateObject <NiLteSdrTimingSync> ())
@@ -127,7 +128,8 @@ namespace ns3
   void
   NiLtePhyInterface::DoDispose (void)
   {
-    if (m_enableNiApi && m_initializationDone)
+    if (m_enableNiApi && m_initializationDone
+    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
       {
         if (m_enableNiApiLoopback)
           {
@@ -144,13 +146,25 @@ namespace ns3
         m_enableNiApi = false;
         m_initializationDone = false;
       }
+    else
+    {
+      m_enableNiApi = false;
+      m_initializationDone = false;
+    }
   }
 
   // automatically called by NS-3
   void
   NiLtePhyInterface::DoInitialize (void)
   {
-    if (m_enableNiApi && !m_initializationDone)
+    NI_LOG_DEBUG(this << "NiLtePhyInterface::DoInitialize with " << 
+                        " m_enableNiApi:" << m_enableNiApi <<
+                        ", m_ns3DevType:" << m_ns3DevType <<
+                        ", m_niApiDevType:" << m_niApiDevType <<
+                        ", m_enableNiApiLoopback:" << m_enableNiApiLoopback);
+
+    if (m_enableNiApi && !m_initializationDone
+    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
       {
         if (m_enableNiApiLoopback)
           {
@@ -172,6 +186,12 @@ namespace ns3
           }
         m_initializationDone = true;
       }
+  }
+
+  void
+  NiLtePhyInterface::SetNiPhyTimingIndEndOkCallback (NiPhyTimingIndEndOkCallback c)
+  {
+    m_niPhyTimingIndEndOkCallback = c;
   }
 
   void
@@ -204,10 +224,12 @@ namespace ns3
     NI_LOG_NONE (this << " " << __FILE__ << " " << __func__);
 
     // enable udp transport layer only if ni api is enabled
-    if (m_enableNiApi && m_enableNiApiLoopback) {
+    if (m_enableNiApi && m_enableNiApiLoopback
+    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+    {
         // deriving thread priorities from ns3 main process
-        int ns3Priority = NiUtils::GetThreadPrioriy();
-        const int rxThreadPriority = ns3Priority - 5;
+        int ns3Priority = NiUtils::GetThreadPrioriy(); // -60 htop value
+        const int rxThreadPriority = ns3Priority - 2;  // -58 htop value
         // create udp transport object
         m_niUdpTransport = CreateObject <NiUdpTransport> ("LTE");
         // create udp tx/rx sockets for enb config
@@ -239,7 +261,9 @@ namespace ns3
     NI_LOG_NONE (this << " " << __FILE__ << " " << __func__);
 
     // de-init udp transport layer only if ni api was enabled
-    if (m_enableNiApi && m_enableNiApiLoopback) {
+    if (m_enableNiApi && m_enableNiApiLoopback
+    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+    {
         if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
             m_niUdpTransport->CloseUdpSocketTx();
             m_niUdpTransport->CloseUdpSocketRx();
@@ -266,19 +290,23 @@ namespace ns3
   NiLtePhyInterface::InitializeNiPipeTransport ()
   {
     // enable pipe transport layer only if ni api is enabled
-    if (m_enableNiApi && !m_enableNiApiLoopback) {
+    if (m_enableNiApi && !m_enableNiApiLoopback
+    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+    {
         //  check device configuration
         if ( ((m_niApiDevType==NIAPI_ENB)&&(m_ns3DevType==NS3_ENB)) ||
             ((m_niApiDevType==NIAPI_UE)&&(m_ns3DevType==NS3_UE)) )
           {
             // deriving thread priorities from ns3 main process
             int ns3Priority = NiUtils::GetThreadPrioriy();
-            const int niTransportPhyTimingIndPrio = ns3Priority;
-            const int niTransportPhyRxPrio = ns3Priority - 5;
+            const int niTransportPhyTimingIndPrio = ns3Priority; // -60 htop value
+            const int niTransportPhyRxPrio = ns3Priority - 2;    // -58 htop value
             // create udp transport object
             m_niPipeTransport = CreateObject <NiPipeTransport> ("LTE");
             // init transport layer for LTE
             m_niPipeTransport->Init(niTransportPhyTimingIndPrio, niTransportPhyRxPrio);
+            // set call back for timing indication
+            m_niPipeTransport->SetNiApiTimingIndEndOkCallback(MakeCallback (&NiLtePhyInterface::NiStartTimingIndHandler, this));
             // set call back for Rx Control and Data Frames
             m_niPipeTransport->SetNiApiDataEndOkCallback (MakeCallback (&NiLtePhyInterface::NiStartRxCtrlDataFrame, this));
             // set call back for Rx Cell Measurement Report
@@ -296,7 +324,9 @@ namespace ns3
   NiLtePhyInterface::DeInitializeNiPipeTransport ()
   {
     // de-init pipe transport layer only if ni api is enabled
-    if (m_enableNiApi && !m_enableNiApiLoopback) {
+    if (m_enableNiApi && !m_enableNiApiLoopback
+    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+    {
         //  check device configuration
         if ( ((m_niApiDevType==NIAPI_ENB)&&(m_ns3DevType==NS3_ENB)) ||
             ((m_niApiDevType==NIAPI_UE)&&(m_ns3DevType==NS3_UE)) )
@@ -304,6 +334,7 @@ namespace ns3
             // de-init transport layer for LTE
             m_niPipeTransport->DeInit();
             // remove call backs
+            m_niPipeTransport->SetNiApiTimingIndEndOkCallback(MakeNullCallback< bool, uint16_t, uint8_t, bool >());
             m_niPipeTransport->SetNiApiDataEndOkCallback (MakeNullCallback< bool, uint8_t* >());
             m_niPipeTransport->SetNiApiCellMeasurementEndOkCallback (MakeNullCallback< bool, PhyCellMeasInd >());
           }
@@ -317,7 +348,9 @@ namespace ns3
   NiLtePhyInterface::InitializeNiLteSdrTimingSync ()
   {
     // de-init SDR timing sync only if ni api is enabled
-    if (m_enableNiApi && !m_enableNiApiLoopback) {
+    if (m_enableNiApi && !m_enableNiApiLoopback
+    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+    {
         //  check device configuration
         if ( ((m_niApiDevType==NIAPI_ENB)&&(m_ns3DevType==NS3_ENB)) ||
             ((m_niApiDevType==NIAPI_UE)&&(m_ns3DevType==NS3_UE)) )
@@ -335,7 +368,9 @@ namespace ns3
   NiLtePhyInterface::DeInitializeNiLteSdrTimingSync ()
   {
     // enable pipe transport layer only if ni api is enabled
-    if (m_enableNiApi && !m_enableNiApiLoopback) {
+    if (m_enableNiApi && !m_enableNiApiLoopback
+    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+    {
         //  check device configuration
         if ( ((m_niApiDevType==NIAPI_ENB)&&(m_ns3DevType==NS3_ENB)) ||
             ((m_niApiDevType==NIAPI_UE)&&(m_ns3DevType==NS3_UE)) )
@@ -387,8 +422,9 @@ namespace ns3
   {
     NI_LOG_DEBUG(this << " - Set NI LTE API Mode to " << enable);
 
-    m_enableNiApi = enable;
-    this->DoInitialize();
+      m_enableNiApi = enable;
+      this->DoInitialize();
+
   }
 
   bool
@@ -447,7 +483,7 @@ namespace ns3
           }
         // calculate offset in number of subrames
         int64_t signedOffset = (int64_t)((*m_nrFrames) * 10 + (*m_nrSubFrames)) - (int64_t)(m_sfn * 10 + m_tti);
-        offset = abs(signedOffset);
+        offset = (uint64_t) llabs(signedOffset);
         NI_LOG_DEBUG(this << " - SfnTtiCounterSync: MIB received - synchronizing sfn: "
                           << *m_nrFrames << "->" << m_sfn << " and tti: "  << *m_nrSubFrames << "->" << (uint16_t) m_tti
                           << ", offset: " << signedOffset);
@@ -494,7 +530,8 @@ namespace ns3
   {
     // sanity checks
     if (*payloadDataBufOffset > m_tbsSize) {
-        NI_LOG_FATAL (this << " - DL: payloadDataBufOffset > m_tbsSize");
+        NI_LOG_FATAL (this << " - DL: payloadDataBufOffset(" << *payloadDataBufOffset << ") > m_tbsSize(" << m_tbsSize << ") "
+                      << m_mcs << ", " << m_rbBitmap);
     }
 
     // chose api transport layer
@@ -795,6 +832,20 @@ namespace ns3
         // update channel SINR value
         SetNiChannelSinrValue(widebandSinr);
       }
+    return true;
+  }
+
+  // call back function triggerd by PHY_TIMING_IND and provides SFN/TTI
+  bool
+  NiLtePhyInterface::NiStartTimingIndHandler (
+                                uint16_t sfn,
+                                uint8_t tti,
+                                bool firstRun
+                               )
+  {
+    NI_LOG_DEBUG (this << ", " << sfn << ", " << std::to_string(tti));
+    m_firstPhyTimingInd = firstRun;
+    m_niPhyTimingIndEndOkCallback(sfn, tti, firstRun);
     return true;
   }
 
@@ -1808,6 +1859,8 @@ namespace ns3
     const int errorTtiDuration   = 666; // defaultTtiTiming*2/3
     const int warningTtiDuration = 333; // defaultTtiTiming*1/3
 
+    NI_LOG_DEBUG (this << ", Start subframe " << nrFrames << "." << nrSubFrames);
+
     if (defaultTtiDuration != (uint32_t) ns3TtiTimingUs)
       {
         NI_LOG_FATAL("NS3 TTI duration (" << ns3TtiTimingUs <<") not equal to: " << defaultTtiDuration << "(us)");
@@ -1816,12 +1869,6 @@ namespace ns3
     // tracing used for performance measurements
     g_logTraceStartSubframeTime = NiUtils::GetSysTime();
     NI_LOG_TRACE("[Trace#0],StartSubFrameStart," << (NiUtils::GetSysTime()-g_logTraceStartSubframeTime));
-
-    // check for first subframe / iteration
-    const bool firstRun = (Simulator::Now().GetMicroSeconds() == 0) ? true : false;
-
-    // wait for the first timing indication
-    if (firstRun) WaitForPhyTimingInd();
 
     // get actual system time
     const uint64_t systemTimeUs = NiUtils::GetSysTime();
@@ -1833,10 +1880,10 @@ namespace ns3
     //  diff positive -> PHY timing before NS3 Simulator
     //  diff negative -> NS3 timing before PHY timing
     int64_t diffUs = (int64_t)systemTimeUs - (int64_t)timingIndTimeUs;
-    const int absDiffUs = abs(diffUs);
+    const int64_t absDiffUs = llabs(diffUs);
 
     // error handling in case of high timing diff
-    if (firstRun)
+    if (m_firstPhyTimingInd)
       {
         // ignore errors on first run
         NI_LOG_DEBUG ("first iteration");
@@ -1866,7 +1913,7 @@ namespace ns3
     const uint8_t timingIndTti = m_niPipeTransport->GetTimingIndTti();
 
     // calc and track the TTI/SFN offset (m_sfnSfOffset) between PHY and Simulator timing
-    m_niLteSdrTimingSync->ReCalcSfnSfOffset(firstRun, nrFrames, nrSubFrames,
+    m_niLteSdrTimingSync->ReCalcSfnSfOffset(m_firstPhyTimingInd, nrFrames, nrSubFrames,
                                             timingIndSfn, timingIndTti,
                                             ueToEnbSfoffset, m_sfnSfOffset);
 

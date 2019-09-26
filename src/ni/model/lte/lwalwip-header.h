@@ -77,7 +77,7 @@ public:
 private:
   uint32_t m_lwaactivate; //!< LWA activate status
   uint32_t m_lwipactivate; //!< LWIP activate status
-  uint64_t m_bearerid; //!< Bearer id of LWIP link
+  uint32_t m_bearerid; //!< Bearer id of LWIP link
 };
 
 } // namespace ns3

@@ -1,0 +1,7 @@
+## -*- Mode: python; py-indent-offset: 4; indent-tabs-mode: nil; coding: utf-8; -*-
+
+def build(bld):
+    if bld.env['ENABLE_EMU']:	
+        obj = bld.create_ns3_program('dali-lte-dc-experimentation',	
+                                     ['lte', 'fd-net-device', 'dali'])	
+        obj.source = 'dali-lte-dc-experimentation.cc'

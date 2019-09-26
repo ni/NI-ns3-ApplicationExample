@@ -54,4 +54,4 @@ def build(bld):
     obj.source = 'lena-distributed-ffr.cc'
     obj = bld.create_ns3_program('lena-uplink-power-control',
                                  ['lte'])
-    obj.source = 'lena-uplink-power-control.cc'
+    obj.source = 'lena-uplink-power-control.cc'   

@@ -10,6 +10,7 @@ declare -a NODE1_START_CMD_LIST=(
                      "./waf --run ni-lte-wifi-lan-interworking"
                      "./waf --run ni-lte-simple"
 #                     "./waf --run ni-remote-control-simple"
+                     "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext_no_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lan__no_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lte__no_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_wifi__no_loopback"
@@ -17,6 +18,11 @@ declare -a NODE1_START_CMD_LIST=(
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_wifi__wifi_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lte__lte_wifi_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_wifi__lte_wifi_loopback"
+                     "./ni_start.sh Lte BSTS config_lte_no_loopback"
+                     "./ni_start.sh LteDc BSTS config_lte_dc_no_loopback"
+                     "./ni_start.sh LteDcDali BSTS config_lte_dc_dali_dl_no_loopback"
+                     "./ni_start.sh LteDcDali BSTS config_lte_dc_dali_ul_no_loopback"
+                     "./ni_start.sh LteDcDali BSTS config_lte_dc_dali_tcp_no_loopback"
                      )
 
 NUMTESTS=${#NODE1_START_CMD_LIST[@]}
@@ -32,11 +38,11 @@ do
   echo "Test $i / ${NUMTESTS} :"
   echo "  ${NODE1_START_CMD_LIST[$i-1]}"
   echo "  executing..."
-  # execute start command for first node in background considerung a execution time out
+  # execute start command in background considerung a execution time out
   timeout -k $TIMEOUT ${NODE1_START_CMD_LIST[$i-1]} &> test_output_${i-1}_a.log & P1=$!
   sleep 1
 
-  # wait for first returning process and collect exit status
+  # wait for returning process and collect exit status
   wait -n
   EXIT_SCRIPT_1=$?
   if [ "$EXIT_SCRIPT_1" -eq 124 ]; then

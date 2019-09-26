@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Manuel Requena <manuel.requena@cttc.es>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #ifndef LTE_RLC_UM_H
@@ -23,6 +30,8 @@
 
 #include "ns3/lte-rlc-sequence-number.h"
 #include "ns3/lte-rlc.h"
+#include <ns3/epc-x2-sap.h>
+#include <ns3/dali-ue-dcx-sap.h>
 
 #include <ns3/event-id.h>
 #include <map>
@@ -46,6 +55,16 @@ public:
   virtual void DoTransmitPdcpPdu (Ptr<Packet> p);
 
   /**
+   * RLC EPC X2 SAP
+   */
+  virtual void DoSendDcPdcpSdu(EpcX2Sap::UeDataParams params);
+
+  /**
+   * RLC UE DCX SAP
+   */
+  virtual void DoSendDcPdcpSdu(DaliUeDcxSap::UeDataParams params);
+
+  /**
    * MAC SAP
    */
   virtual void DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harqId);
@@ -62,6 +81,7 @@ private:
   void ReassembleSnInterval (SequenceNumber10 lowSeqNumber, SequenceNumber10 highSeqNumber);
 
   void ReassembleAndDeliver (Ptr<Packet> packet);
+  void TriggerReceivePdcpPdu(Ptr<Packet> p);
 
   void DoReportBufferStatus ();
 

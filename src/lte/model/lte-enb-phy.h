@@ -63,6 +63,12 @@ public:
    */
   LteEnbPhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy);
 
+  /**
+   * ORCA-DALI new constructor, which allow the definition of ns3DevType
+   * \param ns3DevType, identifies in what device NI API have to be installed (NIAPI_NONE identifies fake node)
+   */
+  LteEnbPhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy, Ns3LteDevType_t ns3DevType);
+
   virtual ~LteEnbPhy ();
 
   // inherited from Object
@@ -326,6 +332,7 @@ private:
   // NI API CHANGE
   bool DoGetNiApiEnable ();
   bool DoGetNiApiLoopbackEnable ();
+  void NiApiPhyTimingIndReceived (uint16_t frameNr, uint8_t subFrameNr, bool firstRun);
 
   /**
    * Add the given RNTI to the list of attached UE #m_ueAttached.

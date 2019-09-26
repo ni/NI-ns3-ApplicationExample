@@ -150,6 +150,14 @@ public:
    */
   void SetUeAddress (uint64_t imsi, Ipv4Address ueAddr);
 
+  /**
+   * TracedCallback signature for data Packet reception event.
+   *
+   * \param [in] packet The data packet sent from the internet.
+   */
+  typedef void (* RxTracedCallback)
+    (Ptr<Packet> packet);
+    
 private:
 
   // S11 SAP SGW methods
@@ -273,6 +281,16 @@ public:
   };
 
   std::map<uint16_t, EnbInfo> m_enbInfoByCellId;
+  
+    /**
+   * \brief Callback to trace RX (reception) data packets at Tun Net Device from internet.
+   */
+  TracedCallback<Ptr<Packet> > m_rxTunPktTrace;
+
+  /**
+   * \brief Callback to trace RX (reception) data packets from S1-U socket.
+   */
+  TracedCallback<Ptr<Packet> > m_rxS1uPktTrace;
 };
 
 } //namespace ns3

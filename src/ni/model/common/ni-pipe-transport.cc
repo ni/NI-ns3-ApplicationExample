@@ -40,11 +40,20 @@ namespace ns3 {
   NiPipeTransport::NiPipeTransport ()
   {
     m_context = "none";
+    m_ns3Running = false;
+    m_niApiTimingIndEndOkCallback = MakeNullCallback< bool, uint16_t, uint8_t, bool >();
+    m_niApiDataEndOkCallback = MakeNullCallback< bool, uint8_t* >();
+    m_niApiCellMeasurementEndOkCallback = MakeNullCallback< bool, PhyCellMeasInd >();
+    ;
   }
 
   NiPipeTransport::NiPipeTransport (std::string context)
   {
     m_context = context;
+    m_ns3Running = false;
+    m_niApiTimingIndEndOkCallback = MakeNullCallback< bool, uint16_t, uint8_t, bool >();
+    m_niApiDataEndOkCallback = MakeNullCallback< bool, uint8_t* >();
+    m_niApiCellMeasurementEndOkCallback = MakeNullCallback< bool, PhyCellMeasInd >();
   }
 
   NiPipeTransport::~NiPipeTransport ()
@@ -208,6 +217,9 @@ NiPipeTransport::ReceiveTimingInd(void)
 
         if (nread > 0)
           {
+            // check im ns-3 is running
+            m_ns3Running = (Simulator::Now().GetMicroSeconds() > 0) || !(Simulator::GetContext () == Simulator::NO_CONTEXT);
+
             NI_LOG_NONE ("received " << nread << "bytes");
             m_bufOffsetU8Pipe1 = 0;
             GetMsgType( &msgType, m_pBufU8Pipe1, &m_bufOffsetU8Pipe1 );
@@ -216,7 +228,7 @@ NiPipeTransport::ReceiveTimingInd(void)
             {
               // Where timing trigger is received from L1, send config and payload.
               case (PHY_TIMING_IND):
-                  bool firstRun;
+                  bool firstRun, callbackValid;
                   firstRun = false;
                   if (!m_timingIndReceived)
                     {
@@ -232,6 +244,12 @@ NiPipeTransport::ReceiveTimingInd(void)
                   NI_LOG_DEBUG ("TimingInd received after: " + std::to_string(m_sysTimeUs-m_lastSysTimeUs) +
                                 " with SFN: " + std::to_string(m_sfn) + " TTI: " +
                                 std::to_string(m_tti));
+                  callbackValid = (m_niApiTimingIndEndOkCallback != MakeNullCallback< bool, uint16_t, uint8_t, bool >());
+                  if (callbackValid && m_ns3Running)
+                    {
+                      // provide timing ind information to ni-phy-interface
+                      m_niApiTimingIndEndOkCallback(m_sfn, m_tti, firstRun);
+                    }
                   done = true;
                   break;
               default:
@@ -348,8 +366,12 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
                                 fpgaPayloadLength |= (phyUlschRxInd.ulschMacPduRxBody.macPdu[i] << i*8);
                             }
                             NI_LOG_DEBUG("fpgaPayloadLength: " << fpgaPayloadLength);
-                            // TODO-NI: handover payload length to upper layers?
-                            m_niApiDataEndOkCallback((uint8_t*)&phyUlschRxInd.ulschMacPduRxBody.macPdu[fpgaPayloadLengthHeaderSize]);
+                            const bool callbackValid = (m_niApiDataEndOkCallback != MakeNullCallback< bool, uint8_t* >());
+                            if (callbackValid && m_ns3Running)
+                              {
+                                // TODO-NI: handover payload length to upper layers?
+                                m_niApiDataEndOkCallback((uint8_t*)&phyUlschRxInd.ulschMacPduRxBody.macPdu[fpgaPayloadLengthHeaderSize]);
+                              }
                           }
                         else
                           {
@@ -383,10 +405,14 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
                   {
                     if (phyDlschRxInd.dlschMacPduRxBody.crcResult == 1)
                       {
-                        NI_LOG_NONE("Start NS3 Rx processing");
-                        // call function for rx packet processing
-                        m_niApiDataEndOkCallback((uint8_t*)&phyDlschRxInd.dlschMacPduRxBody.macPdu);
-                        NI_LOG_NONE("Finished NS3 Rx processing");
+                        const bool callbackValid = (m_niApiDataEndOkCallback != MakeNullCallback< bool, uint8_t* >());
+                        if (callbackValid && m_ns3Running)
+                          {
+                            NI_LOG_NONE("Start NS3 Rx processing");
+                            // call function for rx packet processing
+                            m_niApiDataEndOkCallback((uint8_t*)&phyDlschRxInd.dlschMacPduRxBody.macPdu);
+                            NI_LOG_NONE("Finished NS3 Rx processing");
+                          }
                       }
                   }
                 else
@@ -417,8 +443,13 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
                                 " SBSINR[]: " << strSbSinr.str());
                   if (m_niApiDevType == 1) // UE
                     {
-                      m_niApiCellMeasurementEndOkCallback(phyCellMeasInd);
+                      const bool callbackValid = (m_niApiCellMeasurementEndOkCallback != MakeNullCallback< bool, PhyCellMeasInd >());
+                      if (callbackValid && m_ns3Running)
+                        {
+                          m_niApiCellMeasurementEndOkCallback(phyCellMeasInd);
+                        }
                     }
+                  done = true;
                   break;
                 }
               case (PHY_CNF):
@@ -539,6 +570,8 @@ int32_t NiPipeTransport::CreateAndSendDlTxConfigReqMsg(
   // TODO-NI: re-calculate NS-3 timing to PHY timing
   phyDlTxConfigReq.subMsgHdr.sfn                        = GetTimingIndSfn(); //TODO-NI: replace by caller Sfn
   phyDlTxConfigReq.subMsgHdr.tti                        = GetTimingIndTti(); //TODO-NI: replace by caller Tti
+  m_dlTxConfigSfn = phyDlTxConfigReq.subMsgHdr.sfn;
+  m_dlTxConfigTti = phyDlTxConfigReq.subMsgHdr.tti;
   // update dlsch config
   phyDlTxConfigReq.dlschTxConfigBody.macPduIndex        = ++m_macPduIndex;
   phyDlTxConfigReq.dlschTxConfigBody.rnti               = rnti;
@@ -593,8 +626,8 @@ int32_t NiPipeTransport::CreateAndSendDlTxPayloadReqMsg(
   phyDlTxPayloadReq.genMsgHdr.refId                   = m_msgRefId++;
   phyDlTxPayloadReq.genMsgHdr.bodyLength              = 17+tbsSize;
   phyDlTxPayloadReq.subMsgHdr.cnfMode                 = 1;    // request confirmations from PHY
-  phyDlTxPayloadReq.subMsgHdr.sfn                     = GetTimingIndSfn(); //TODO-NI: replace by caller Sfn
-  phyDlTxPayloadReq.subMsgHdr.tti                     = GetTimingIndTti(); //TODO-NI: replace by caller Tti
+  phyDlTxPayloadReq.subMsgHdr.sfn                     = m_dlTxConfigSfn; //TODO-NI: replace by caller Sfn
+  phyDlTxPayloadReq.subMsgHdr.tti                     = m_dlTxConfigTti; //TODO-NI: replace by caller Tti
   // update dlsch mac pdu fields
   phyDlTxPayloadReq.dlschMacPduTxHdr.parSetBodyLength = 4+tbsSize;
   phyDlTxPayloadReq.dlschMacPduTxBody.macPduIndex     = m_macPduIndex;
@@ -670,6 +703,10 @@ int32_t NiPipeTransport::CreateAndSendUlTxPayloadReqMsg(
   return nwrite;
 }
 
+void NiPipeTransport::SetNiApiTimingIndEndOkCallback (NiPipeTransportTimingIndEndOkCallback c)
+  {
+    m_niApiTimingIndEndOkCallback = c;
+  }
 
 void NiPipeTransport::SetNiApiDataEndOkCallback (NiPipeTransportDataEndOkCallback c)
   {

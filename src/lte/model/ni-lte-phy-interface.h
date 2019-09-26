@@ -42,6 +42,7 @@ namespace ns3
   typedef enum {
     NS3_ENB  = 0,
     NS3_UE = 1,
+	NS3_NOAPI = 3,   //DALI: used to disallow NI API installation/operation in DALI fake nodes
   } Ns3LteDevType_t;
 
   // device identifier
@@ -59,6 +60,7 @@ namespace ns3
     NIAPI_UNDEF_PACKET = 2, //undefined packet type
   } NiApiPacketType_t ;
 
+  typedef Callback< void, uint16_t, uint8_t, bool > NiPhyTimingIndEndOkCallback;
   typedef Callback< void, Ptr<Packet> > NiPhyRxDataEndOkCallback;
   typedef Callback< void, std::list<Ptr<LteControlMessage> > > NiPhyRxCtrlEndOkCallback;
   typedef Callback< void, const SpectrumValue& > NiPhyRxCqiReportCallback;
@@ -146,6 +148,7 @@ namespace ns3
 
     static TypeId GetTypeId (void);
 
+    void SetNiPhyTimingIndEndOkCallback (NiPhyTimingIndEndOkCallback c);
     void SetNiPhyRxDataEndOkCallback (NiPhyRxDataEndOkCallback c);
     void SetNiPhyRxCtrlEndOkCallback (NiPhyRxCtrlEndOkCallback c);
     void SetNiPhyRxCqiReportCallback (NiPhyRxCqiReportCallback c);
@@ -189,6 +192,7 @@ namespace ns3
 
     bool NiStartRxCtrlDataFrame (uint8_t* payloadDataBuffer);
     bool NiStartRxCellMeasurementIndHandler (PhyCellMeasInd phyCellMeasInd);
+    bool NiStartTimingIndHandler (uint16_t sfn, uint8_t tti, bool firstRun);
     bool NiStartRxDlCtrlFrame (Ptr<PacketBurst> packetBurst, std::list<Ptr<LteControlMessage> > &ctrlMsgList, uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset);
     bool NiStartRxUlCtrlFrame (Ptr<PacketBurst> packetBurst, std::list<Ptr<LteControlMessage> > &ctrlMsgList, uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset);
     bool NiStartRxDataFrame (Ptr<PacketBurst> packetBurst, uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset);
@@ -205,6 +209,7 @@ namespace ns3
     uint64_t WaitForPhyTimingInd (void);
     void NiSetTti (uint64_t tti_us);
 
+    NiPhyTimingIndEndOkCallback m_niPhyTimingIndEndOkCallback;
     NiPhyRxDataEndOkCallback m_niPhyRxDataEndOkCallback;
     NiPhyRxCtrlEndOkCallback m_niPhyRxCtrlEndOkCallback;
     NiPhyRxCqiReportCallback m_niPhyRxCqiReportCallback;
@@ -228,6 +233,7 @@ namespace ns3
     uint16_t m_rnti;
     uint32_t m_mcs;
     uint32_t m_tbsSize;
+    bool     m_firstPhyTimingInd;
 
     double   m_chSinrDb;
     double   m_chSinrLin;

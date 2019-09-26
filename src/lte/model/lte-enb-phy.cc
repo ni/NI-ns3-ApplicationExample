@@ -174,6 +174,32 @@ LteEnbPhy::LteEnbPhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy)
   // NI API CHANGE: create NiLtePhyInterface object as eNB
   m_niLtePhyModule = CreateObject <NiLtePhyInterface> (NS3_ENB);
   // create callbacks from ni phy interface
+  m_niLtePhyModule->SetNiPhyTimingIndEndOkCallback (MakeCallback (&LteEnbPhy::NiApiPhyTimingIndReceived, this));
+  m_niLtePhyModule->SetNiPhyRxDataEndOkCallback (MakeCallback (&LteEnbPhy::PhyPduReceived, this));
+  m_niLtePhyModule->SetNiPhyRxCtrlEndOkCallback (MakeCallback (&LteEnbPhy::ReceiveLteControlMessageList, this));
+}
+
+LteEnbPhy::LteEnbPhy (Ptr<LteSpectrumPhy> dlPhy, Ptr<LteSpectrumPhy> ulPhy, Ns3LteDevType_t ns3DevType)
+  : LtePhy (dlPhy, ulPhy),
+    m_enbPhySapUser (0),
+    m_enbCphySapUser (0),
+    m_nrFrames (0),
+    m_nrSubFrames (0),
+    m_srsPeriodicity (0),
+    m_srsStartTime (Seconds (0)),
+    m_currentSrsOffset (0),
+    m_interferenceSampleCounter (0)
+{
+  m_enbPhySapProvider = new EnbMemberLteEnbPhySapProvider (this);
+  m_enbCphySapProvider = new MemberLteEnbCphySapProvider<LteEnbPhy> (this);
+  m_harqPhyModule = Create <LteHarqPhy> ();
+  m_downlinkSpectrumPhy->SetHarqPhyModule (m_harqPhyModule);
+  m_uplinkSpectrumPhy->SetHarqPhyModule (m_harqPhyModule);
+
+  // NI API CHANGE: create NiLtePhyInterface object as eNB
+  m_niLtePhyModule = CreateObject <NiLtePhyInterface> (ns3DevType);
+  // create callbacks from ni phy interface
+  m_niLtePhyModule->SetNiPhyTimingIndEndOkCallback (MakeCallback (&LteEnbPhy::NiApiPhyTimingIndReceived, this));
   m_niLtePhyModule->SetNiPhyRxDataEndOkCallback (MakeCallback (&LteEnbPhy::PhyPduReceived, this));
   m_niLtePhyModule->SetNiPhyRxCtrlEndOkCallback (MakeCallback (&LteEnbPhy::ReceiveLteControlMessageList, this));
 }
@@ -275,22 +301,37 @@ LteEnbPhy::DoInitialize ()
   NS_LOG_FUNCTION (this);
   bool haveNodeId = false;
   uint32_t nodeId = 0;
-  if (m_netDevice != 0)
+
+  // NI API CHANGE: start eNB only if simulation mode is configured
+  bool startEnbSimulation = true;
+  if (m_niLtePhyModule->GetNiApiEnable () == true &&
+      m_niLtePhyModule->GetNiApiDevType() == NIAPI_ENB &&
+      m_niLtePhyModule->GetNiApiLoopbackEnable() == false &&
+      m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)
     {
-      Ptr<Node> node = m_netDevice->GetNode ();
-      if (node != 0)
+      startEnbSimulation = false;
+    }
+
+  if (startEnbSimulation)
+    {
+      NI_LOG_DEBUG(this << ", LteEnbPhy::DoInitialize, startEnbSimulation");
+      if (m_netDevice != 0)
         {
-          nodeId = node->GetId ();
-          haveNodeId = true;
+          Ptr<Node> node = m_netDevice->GetNode ();
+          if (node != 0)
+            {
+              nodeId = node->GetId ();
+              haveNodeId = true;
+            }
         }
-    }
-  if (haveNodeId)
-    {
-      Simulator::ScheduleWithContext (nodeId, Seconds (0), &LteEnbPhy::StartFrame, this);
-    }
-  else
-    {
-      Simulator::ScheduleNow (&LteEnbPhy::StartFrame, this);
+      if (haveNodeId)
+        {
+          Simulator::ScheduleWithContext (nodeId, Seconds (0), &LteEnbPhy::StartFrame, this);
+        }
+      else
+        {
+          Simulator::ScheduleNow (&LteEnbPhy::StartFrame, this);
+        }
     }
   Ptr<SpectrumValue> noisePsd = LteSpectrumValueHelper::CreateNoisePowerSpectralDensity (m_ulEarfcn, m_ulBandwidth, m_noiseFigure);
   m_uplinkSpectrumPhy->SetNoisePowerSpectralDensity (noisePsd);
@@ -459,6 +500,49 @@ bool
 LteEnbPhy::DoGetNiApiLoopbackEnable ()
 {
   return (m_niLtePhyModule->GetNiApiLoopbackEnable ());
+}
+
+// NI API CHANGE: start eNB only if API w/ SDR is configured
+void
+LteEnbPhy::NiApiPhyTimingIndReceived (uint16_t frameNr, uint8_t subFrameNr, bool firstRun)
+{
+  NI_LOG_DEBUG("LteEnbPhy::NiApiPhyTimingIndReceived: " << frameNr << ", " << std::to_string(subFrameNr) << ", " << firstRun);
+
+  bool haveNodeId = false;
+  uint32_t nodeId = 0;
+  bool startEnbSdr = false;
+
+  if (m_niLtePhyModule->GetNiApiEnable () == true &&
+      m_niLtePhyModule->GetNiApiDevType() == NIAPI_ENB &&
+      m_niLtePhyModule->GetNiApiLoopbackEnable() == false &&
+      m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI &&
+      firstRun)
+    {
+      startEnbSdr = true;
+    }
+  // start eNB only if API w/ SDR is configured
+  if (startEnbSdr)
+    {
+      NI_LOG_DEBUG(this << ", LteEnbPhy::NiApiPhyTimingIndReceived: Schedule StartFrame on firstRun" );
+
+      if (m_netDevice != 0)
+        {
+          Ptr<Node> node = m_netDevice->GetNode ();
+          if (node != 0)
+            {
+              nodeId = node->GetId ();
+              haveNodeId = true;
+            }
+        }
+      if (haveNodeId)
+        {
+          Simulator::ScheduleWithContext (nodeId, Seconds (0), &LteEnbPhy::StartFrame, this);
+        }
+      else
+        {
+          Simulator::ScheduleNow (&LteEnbPhy::StartFrame, this);
+        }
+    }
 }
 
 void
@@ -648,6 +732,9 @@ LteEnbPhy::StartSubFrame (void)
 
   ++m_nrSubFrames;
 
+  uint64_t startTime = NiUtils::GetSysTime();
+  NI_LOG_NONE (this << ", " << m_nrFrames << ", " << m_nrSubFrames << ", " << startTime);
+
   // NI API CHANGE
   if (m_niLtePhyModule->GetNiApiEnable () == true)
     {
@@ -655,7 +742,8 @@ LteEnbPhy::StartSubFrame (void)
       m_niLtePhyModule->NiSfnTtiCounterSync (&m_nrFrames, &m_nrSubFrames);
       // ...
       if (m_niLtePhyModule->GetNiApiDevType() == NIAPI_ENB &&
-          m_niLtePhyModule->GetNiApiLoopbackEnable() == false)
+          m_niLtePhyModule->GetNiApiLoopbackEnable() == false
+		  && m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)  //DALI: fake nodes should not access NI API
         {
           m_niLtePhyModule->NiStartSubframe(m_nrFrames, m_nrSubFrames, Seconds (GetTti ()).GetMicroSeconds(), 0);
         }
@@ -807,7 +895,8 @@ LteEnbPhy::StartSubFrame (void)
   Ptr<PacketBurst> pb = GetPacketBurst ();
 
   // NI API CHANGE: Switch between legacy ns-3 mode and use of NI API
-  if (m_niLtePhyModule->GetNiApiEnable () == true){
+  if (m_niLtePhyModule->GetNiApiEnable () == true)
+  {
       m_niLtePhyModule->NiStartTxCtrlDataFrame (pb, ctrlMsg, m_nrFrames, m_nrSubFrames);
   } else { // original ns-3 code
 
@@ -827,6 +916,10 @@ LteEnbPhy::StartSubFrame (void)
   Simulator::Schedule (Seconds (GetTti ()),
                        &LteEnbPhy::EndSubFrame,
                        this);
+
+  uint64_t endTime = NiUtils::GetSysTime();
+  int64_t duration = endTime-startTime;
+  NI_LOG_NONE (this << ", " << m_nrFrames << ", " << m_nrSubFrames << ", " << endTime << ", " << duration);
 
   // NI API CHANGE: temporary change for timing measurements
   NI_LOG_TRACE("[Trace#10],StartSubFrameEnd," << ( NiUtils::GetSysTime()-g_logTraceStartSubframeTime));

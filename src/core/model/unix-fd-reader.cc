@@ -23,6 +23,7 @@
 #include <cstring>
 #include <unistd.h>  // close()
 #include <fcntl.h>
+#include <sys/prctl.h> // NI API CHANGE (for setting thread names)
 
 #include "log.h"
 #include "fatal-error.h"
@@ -161,6 +162,25 @@ void FdReader::Stop (void)
 void FdReader::Run (void)
 {
   NS_LOG_FUNCTION (this);
+
+  // NI API CHANGE
+  // set thread name for identification
+  std::stringstream threadName;
+  threadName << "FdReaderThread (" << this << ")";
+  prctl(PR_SET_NAME, threadName.str().c_str(),0,0,0);
+  int policy;
+  struct sched_param param;
+  if(pthread_getschedparam(pthread_self(), &policy, &param) < 0)
+  {
+    NS_FATAL_ERROR("Error getting thread priority!");
+  }
+  param.sched_priority -= 3; // Now we reduce the priority of this thread
+  if(pthread_setschedparam(pthread_self(), policy, &param) < 0)
+  {
+    NS_FATAL_ERROR("Error setting thread priority!");
+  }
+  // NI API CHANGE - END
+
   int nfds;
   fd_set rfds;
 

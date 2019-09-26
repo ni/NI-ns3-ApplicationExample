@@ -26,8 +26,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <sys/prctl.h> // for setting thread names
 #include "ns3/fatal-error.h"
 #include "ni-utils.h"
+#include "ni-logging.h"
 
 namespace ns3 {
 
@@ -82,7 +84,8 @@ void NiUtils::AddThreadInfo (pthread_t threadId, std::string threadName)
   threadInfo.id = threadId;
   threadInfo.name = threadName;
   m_threadInfo.push_back(threadInfo);
-  pthread_setname_np(threadId, threadName.c_str());
+  //pthread_setname_np(threadId, threadName.c_str());
+  prctl(PR_SET_NAME, threadName.c_str(),0,0,0);
 }
 
 void NiUtils::PrintThreadInfo(void)
@@ -174,6 +177,19 @@ double NiUtils::ConvertFxpI8_6_2ToDouble(uint8_t fxp)
   return (integerPartDbl + decimalPartDbl);
 }
 
+// prints ip addresses of ns-3 nodes
+void NiUtils::PrintNodeInfo(std::string nodeName, Ptr<Node> nodePtr)
+{
+  std::cout << "-- "<< nodeName << " ------------------------------------" << std::endl;
+  for (int i = 0; i < nodePtr->GetObject<Ipv4> ()->GetNInterfaces(); ++i)
+    {
+      for (int j = 0; j < nodePtr->GetObject<Ipv4> ()->GetNAddresses(i); ++j)
+        {
+          std::cout << "Node(" << nodePtr->GetId() << "),Interface(" << i << "),Address(" << j << ") = " <<
+              nodePtr->GetObject<Ipv4> ()->GetAddress (i,j).GetLocal () << std::endl;
+        }
+    }
+}
 
 
 // local C functions
@@ -188,6 +204,9 @@ void NiUtilsHandleSignals (int sig)
             << " caught within thread with THREAD_ID = "<< threadId << " (" << threadName << ")" << std::endl;
   // print backtrace
   NiUtils::Backtrace();
+  // de-init logging and save log file in case of errors
+  NiLoggingDeInit();
+
   exit(1);
 }
 

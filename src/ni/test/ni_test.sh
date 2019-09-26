@@ -5,6 +5,17 @@ EXIT_CODE=0
 # time out for each test run
 TIMEOUT="120s 120s"
 
+# get name of the default ethernet interface
+DEFAULT_ETH_IF_NAME=$(ip -o -4 route show to default | awk '{print $5}')
+# check if PROMISC mode is enabled
+ip link show $DEFAULT_ETH_IF_NAME | grep -q "PROMISC"
+DEFAULT_ETH_IF_PROMISC=$?
+# if not enabled, switch on
+if [ "$DEFAULT_ETH_IF_PROMISC" -ne "0" ]; then
+  # set promisc mode, needed for emu-fd-net-devices
+  sudo ip link set $DEFAULT_ETH_IF_NAME promisc on
+fi
+
 # test lists for a two node loopback scenario 
 declare -a NODE1_START_CMD_LIST=(
                      "./ni_start.sh Adhoc Sta1 config_wifi_local_loopback"
@@ -21,6 +32,10 @@ declare -a NODE1_START_CMD_LIST=(
                      "./ni_start.sh LteWiFi BS config_lwa_lwip_ext__ref_lte__lte_wifi_loopback"
                      "./ni_start.sh LteWiFi BS config_lwa_lwip_ext__ref_wifi__no_loopback"
                      "./ni_start.sh LteWiFi BS config_lwa_lwip_ext__ref_wifi__lte_wifi_loopback"
+                     "./ni_start.sh LteDc MBSTS config_lte_dc_no_loopback"
+                     "./ni_start.sh LteDcDali MBSTS config_lte_dc_dali_dl_no_loopback"
+                     "./ni_start.sh LteDcDali MBSTS config_lte_dc_dali_ul_no_loopback"
+                     "./ni_start.sh LteDcDali MBSTS config_lte_dc_dali_tcp_no_loopback"
                      )
 declare -a NODE2_START_CMD_LIST=(
                      "./ni_start.sh Adhoc Sta2 config_wifi_local_loopback"
@@ -37,6 +52,10 @@ declare -a NODE2_START_CMD_LIST=(
                      "./ni_start.sh LteWiFi TS config_lwa_lwip_ext__ref_lte__lte_wifi_loopback"
                      "./ni_start.sh LteWiFi TS config_lwa_lwip_ext__ref_wifi__no_loopback"
                      "./ni_start.sh LteWiFi TS config_lwa_lwip_ext__ref_wifi__lte_wifi_loopback"
+                     "./ni_start.sh LteDc SBSTS config_lte_dc_no_loopback"
+                     "./ni_start.sh LteDcDali SBSTS config_lte_dc_dali_dl_no_loopback"
+                     "./ni_start.sh LteDcDali SBSTS config_lte_dc_dali_ul_no_loopback"
+                     "./ni_start.sh LteDcDali SBSTS config_lte_dc_dali_tcp_no_loopback"
                      )
 
 # check for maching lists sizes
@@ -113,5 +132,12 @@ else
 fi
 
 cd -
+
+# disable promisc mode if it was initialy disabled
+if [ "$DEFAULT_ETH_IF_PROMISC" -ne "0" ]; then
+  # set promisc mode, needed for emu-fd-net-devices
+  sudo ip link set $DEFAULT_ETH_IF_NAME promisc off
+fi
+
 exit $EXIT_CODE
 

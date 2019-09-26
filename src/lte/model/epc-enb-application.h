@@ -1,6 +1,7 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, University of Padova, Dep. of Information Engineering, SIGNET lab
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,6 +18,9 @@
  *
  * Author: Jaume Nin <jnin@cttc.cat>
  *         Nicola Baldo <nbaldo@cttc.cat>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          Support for real S1AP link
  */
 
 #ifndef EPC_ENB_APPLICATION_H
@@ -102,6 +106,14 @@ public:
    */
   void SetS1apSapMme (EpcS1apSapMme * s);
 
+  /**
+   * Set the S1AP provider for the S1AP eNB endpoint
+   *
+   * \param s the S1AP provider
+   */
+  void SetS1apSapMme (EpcS1apSapEnbProvider * s);
+
+
   /** 
    * 
    * \return the ENB side of the S1-AP SAP 
@@ -122,6 +134,14 @@ public:
    * \param socket pointer to the S1-U socket
    */
   void RecvFromS1uSocket (Ptr<Socket> socket);
+
+  /**
+   * TracedCallback signature for data Packet reception event.
+   *
+   * \param [in] packet The data packet sent from the internet.
+   */
+  typedef void (* RxTracedCallback)
+    (Ptr<Packet> packet);
 
 
   struct EpsFlowId_t
@@ -238,9 +258,15 @@ private:
    * 
    */
   EpcS1apSapMme* m_s1apSapMme;
+  
+  /**
+   * Provider for the methods of S1AP eNB endpoint
+   *
+   */
+  EpcS1apSapEnbProvider* m_s1apSapEnbProvider;
 
   /**
-   * ENB side of the S1-AP SAP
+   * ENB side of the S1-AP SAP eNB endpoint
    * 
    */
   EpcS1apSapEnb* m_s1apSapEnb;
@@ -253,6 +279,15 @@ private:
 
   uint16_t m_cellId;
 
+  /**
+   * \brief Callback to trace RX (reception) data packets from LTE Socket.
+   */
+  TracedCallback<Ptr<Packet> > m_rxLteSocketPktTrace;
+
+  /**
+   * \brief Callback to trace RX (reception) data packets from S1-U Socket.
+   */
+  TracedCallback<Ptr<Packet> > m_rxS1uSocketPktTrace;
 };
 
 } //namespace ns3

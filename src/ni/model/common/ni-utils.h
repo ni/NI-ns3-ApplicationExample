@@ -26,6 +26,10 @@
 #include <thread>
 #include <vector>
 #include <cstdint>
+// needed for PrintNodeInfo()
+#include "ns3/core-module.h"
+#include "ns3/network-module.h"
+#include "ns3/internet-module.h"
 
 namespace ns3 {
 
@@ -48,6 +52,7 @@ public:
   static void Backtrace(void);
   static uint64_t GetSysTime(void);
   static double ConvertFxpI8_6_2ToDouble(uint8_t fxp);
+  static void PrintNodeInfo(std::string nodeName, Ptr<Node> nodePtr);
 private:
 
   virtual

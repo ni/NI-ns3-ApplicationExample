@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011, 2012 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,6 +20,11 @@
  * Authors: Nicola Baldo <nbaldo@cttc.es>
  *          Marco Miozzo <mmiozzo@cttc.es>
  *          Manuel Requena <manuel.requena@cttc.es> 
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #ifndef LTE_ENB_RRC_H
@@ -49,6 +56,7 @@ namespace ns3 {
 class LteRadioBearerInfo;
 class LteSignalingRadioBearerInfo;
 class LteDataRadioBearerInfo;
+class RlcBearerInfo;
 class LteEnbRrc;
 class Packet;
 
@@ -82,6 +90,8 @@ public:
     HANDOVER_JOINING,
     HANDOVER_PATH_SWITCH,
     HANDOVER_LEAVING,
+    PREPARE_DALI_DUAL_CONNECTIVITY_CONFIGURATION,
+	DALI_DUAL_CONNECTIVITY_CONFIGURATION,
     NUM_STATES
   };
 
@@ -122,6 +132,11 @@ public:
    * \param imsi the IMSI
    */
   void SetImsi (uint64_t imsi);
+  
+  // set if this is a DALI DC device
+  void SetIsDc (bool isDc);
+  // know if this is a DALI DC device
+  bool GetIsDc (void) const;
 
   /** 
    * Setup a new data radio bearer, including both the configuration
@@ -237,6 +252,17 @@ public:
    */
   void RecvUeContextRelease (EpcX2SapUser::UeContextReleaseParams params); 
 
+  /**
+   * Setup a new RLC entity and the X2 related connection
+   */
+  void RecvRlcSetupRequest (EpcX2SapUser::RlcSetupRequest params);
+
+  /**
+   * Ack the setup of the RLC remote entity, start the re-configuration on the UE for DALI LTE Dual Connectivity Configuration
+   */
+  void RecvRlcSetupCompleted (uint8_t drbid);
+
+
 
   // METHODS FORWARDED FROM ENB RRC SAP ///////////////////////////////////////
 
@@ -255,6 +281,10 @@ public:
   /// Part of the RRC protocol. Implement the LteEnbRrcSapProvider::RecvMeasurementReport interface.
   void RecvMeasurementReport (LteRrcSap::MeasurementReport msg);
 
+  /**
+   * Method created to set up for DALI LTE Dual Connectivity
+   */
+  void RecvRrcSecondaryCellDualConnectivityRequest(uint16_t secondaryRnti, uint16_t secondaryCellId);
 
   // METHODS FORWARDED FROM ENB CMAC SAP //////////////////////////////////////
 
@@ -420,6 +450,10 @@ private:
   std::map <uint8_t, Ptr<LteDataRadioBearerInfo> > m_drbMap;
 
   /**
+   * Map the drb into a RLC (used for remote independent RLC in an DALI DC setup)
+   */
+  std::map <uint8_t, Ptr<RlcBearerInfo> > m_rlcMap;
+  /**
    * The `Srb0` attribute. SignalingRadioBearerInfo for SRB0.
    */
   Ptr<LteSignalingRadioBearerInfo> m_srb0;
@@ -446,8 +480,9 @@ private:
   /// The current UeManager state.
   State m_state;
   ///
+
   LtePdcpSapUser* m_drbPdcpSapUser;
-  ///
+
   bool m_pendingRrcConnectionReconfiguration;
 
   /**
@@ -462,6 +497,11 @@ private:
   uint16_t m_targetCellId;
   std::list<uint8_t> m_drbsToBeStarted;
   bool m_needPhyMacConfiguration;
+  
+  //Specific attributes for DALI LTE Dual Connectivity
+  uint16_t m_secondaryCellId;
+  uint16_t m_secondaryRnti;;
+  bool m_isDc;
 
   /**
    * Time limit before a _connection request timeout_ occurs. Set after a new
@@ -537,6 +577,10 @@ protected:
 public:
   static TypeId GetTypeId (void);
 
+  // know if this is a DALI Dual Connectivity MeNB
+  bool GetIsMasterEnb (void) const;
+  // know if this is a DALI Dual Connectivity SeNB
+  bool GetIsSecondaryEnb (void) const;
 
   /**
    * Set the X2 SAP this RRC should interact with
@@ -550,6 +594,19 @@ public:
    */
   EpcX2SapUser* GetEpcX2SapUser ();
 
+  /**
+   * Set the X2 PDCP Provider this RRC should pass to PDCP layers
+   * \param s the X2 PDCP Provider to be stored in this RRC entity
+   */
+  void SetEpcX2PdcpProvider (EpcX2PdcpProvider* s);
+  EpcX2PdcpProvider* GetEpcX2PdcpProvider () const;
+
+  /**
+   * Set the X2 RLC Provider this RRC should pass to RLC layers
+   * \param s the X2 RLC Provider to be stored in this RRC entity
+   */
+  void SetEpcX2RlcProvider (EpcX2RlcProvider* s);
+  EpcX2RlcProvider* GetEpcX2RlcProvider() const;
 
   /**
    * set the CMAC SAP this RRC should interact with
@@ -560,7 +617,7 @@ public:
 
   /** 
    * Get the CMAC SAP offered by this RRC
-   * \return s the CMAC SAP User interface offered to the MAC by this RRC
+   * \returns the CMAC SAP User interface offered to the MAC by this RRC
    */
   LteEnbCmacSapUser* GetLteEnbCmacSapUser ();
 
@@ -574,7 +631,7 @@ public:
 
   /**
    * Get the Handover Management SAP offered by this RRC
-   * \return s the Handover Management SAP User interface offered to the
+   * \returns the Handover Management SAP User interface offered to the
    *           handover algorithm by this RRC
    */
   LteHandoverManagementSapUser* GetLteHandoverManagementSapUser ();
@@ -732,6 +789,13 @@ public:
    */
   void SetCellId (uint16_t m_cellId);
 
+  /**
+   * get the cell id of this eNB
+   *
+   * \param m_cellId
+   */
+  uint16_t GetCellId () const;
+  
   /** 
    * Enqueue an IP data packet on the proper bearer for downlink
    * transmission. Normally expected to be called by the NetDevice
@@ -863,7 +927,22 @@ public:
   typedef void (* ReceiveReportTracedCallback)
     (uint64_t imsi, uint16_t cellId, uint16_t rnti,
      LteRrcSap::MeasurementReport report);
-  
+
+   /**
+    * This method maps Imsi to Rnti, so that the UeManager of a certain UE
+    * can be retrieved also with the Imsi
+    */
+   void RegisterImsiToRnti(uint64_t imsi, uint16_t rnti);
+
+   uint16_t GetRntiFromImsi(uint64_t imsi);
+
+   uint64_t GetImsiFromRnti(uint16_t rnti);
+
+   /**
+    * Method created to Trigger from Simulation program the configuration for DALI LTE Dual Connectivity
+    */
+   void DoRecvRrcSecondaryCellDualConnectivityRequest (uint16_t rnti, uint16_t secondaryRnti, uint16_t secondaryCellId);
+
 private:
 
 
@@ -898,6 +977,13 @@ private:
   void DoRecvUeContextRelease (EpcX2SapUser::UeContextReleaseParams params);
   void DoRecvLoadInformation (EpcX2SapUser::LoadInformationParams params);
   void DoRecvResourceStatusUpdate (EpcX2SapUser::ResourceStatusUpdateParams params);
+  void DoRecvRlcSetupRequest (EpcX2SapUser::RlcSetupRequest params);
+  void DoRecvRlcSetupCompleted (EpcX2SapUser::UeDataParams params);
+  /**
+   * Receive UE data function
+   *
+   * \param params EpcX2SapUser::UeDataParams
+   */
   void DoRecvUeData (EpcX2SapUser::UeDataParams params);
 
   // CMAC SAP methods
@@ -1049,6 +1135,10 @@ private:
   EpcX2SapUser* m_x2SapUser;
   /// Interface to send messages to neighbour eNodeB over the X2 interface.
   EpcX2SapProvider* m_x2SapProvider;
+  /// Interface to be provided to PDCP
+  EpcX2PdcpProvider* m_x2PdcpProvider;
+  /// Interface to be provided to RLC
+  EpcX2RlcProvider* m_x2RlcProvider;
 
   /// Receive API calls from the eNodeB MAC instance.
   LteEnbCmacSapUser* m_cmacSapUser;
@@ -1132,6 +1222,7 @@ private:
 
   //       TEID      RNTI, DRBID
   std::map<uint32_t, X2uTeidInfo> m_x2uTeidInfoMap;
+  std::map<uint32_t, X2uTeidInfo> m_x2uDcTeidInfoMap; // for the DALI DC devices
 
   /**
    * The `DefaultTransmissionMode` attribute. The default UEs' transmission
@@ -1250,6 +1341,14 @@ private:
    */
   TracedCallback<uint64_t, uint16_t, uint16_t, LteRrcSap::MeasurementReport> m_recvMeasurementReportTrace;
 
+  //Specific attributes for DALI LTE Dual Connectivity
+  bool m_isDualConnectivity;
+  bool m_isMasterEnb;
+  bool m_isSecondaryEnb;
+  bool m_usePdcpInSequenceDelivery;
+  bool m_splitBearerEnb;
+  std::map<uint64_t, uint16_t> m_imsiRntiMap;
+  std::map<uint16_t, uint64_t> m_rntiImsiMap;
 }; // end of `class LteEnbRrc`
 
 

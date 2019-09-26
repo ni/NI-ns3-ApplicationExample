@@ -1,0 +1,29 @@
+#---------------------------------------------
+# Core parameters
+#---------------------------------------------
+
+ns3_base_dir="/home/root/ns-3.26/"
+
+packetSize="1000"
+numPackets="80"
+interPacketInterval="500"
+simTime="60"
+transmTime="10"
+
+niApiEnableLogging="\"false\""
+niApiEnableTapBridge="\"false\""
+
+niApiLteEnabled="\"false\""
+niApiLteLoopbackEnabled="\"true\""
+
+# Dual Connectivity Parameters
+fdDeviceName="\"$(ip -o -4 route show to default | awk '{print $5}')\""
+daliDualConnectivityEnabled="\"true\""
+dualConnectivityLaunchTime="4"
+usePdcpInSequenceDelivery="\"true\""
+daliTransportProtocol="TCP"
+daliLinkDirection="DOWNLINK"
+dataRate="60Mbps"
+tcpVariant="TcpNewReno"
+
+#---------------------------------------------

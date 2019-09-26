@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Manuel Requena <manuel.requena@cttc.es>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #include "ns3/simulator.h"
@@ -25,6 +32,8 @@
 #include "ns3/lte-rlc-um.h"
 #include "ns3/lte-rlc-sdu-status-tag.h"
 #include "ns3/lte-rlc-tag.h"
+
+#include "ns3/ni-logging.h"
 
 namespace ns3 {
 
@@ -44,6 +53,12 @@ LteRlcUm::LteRlcUm ()
 {
   NS_LOG_FUNCTION (this);
   m_reassemblingState = WAITING_S0_FULL;
+  
+  m_epcX2RlcUser = new EpcX2RlcSpecificUser<LteRlcUm> (this);
+  m_epcX2RlcProvider = 0;
+  
+  m_ueDcxRlcUser = new UeDcxRlcSpecificUser<LteRlcUm> (this);
+  m_ueDcxRlcProvider = 0;
 }
 
 LteRlcUm::~LteRlcUm ()
@@ -118,6 +133,21 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
   m_rbsTimer.Cancel ();
 }
 
+void
+LteRlcUm::DoSendDcPdcpSdu(EpcX2Sap::UeDataParams params)
+{
+  NS_LOG_FUNCTION(this);
+  NI_LOG_CONSOLE_DEBUG("LTE.RLC.UM.EPCX2_SAP: Send DC PDU received from " << params.sourceCellId << " in cell " << params.targetCellId);
+  DoTransmitPdcpPdu(params.ueData);
+}
+
+void
+LteRlcUm::DoSendDcPdcpSdu(DaliUeDcxSap::UeDataParams params)
+{
+  NS_LOG_FUNCTION(this);
+  NI_LOG_CONSOLE_DEBUG("LTE.RLC.UM.DCX_SAP: Send DC PDU received from " << params.sourceImsi << " in ue " << params.targetImsi);
+  DoTransmitPdcpPdu(params.ueData);
+}
 
 /**
  * MAC SAP
@@ -670,7 +700,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                               */
                               for ( it = m_sdusBuffer.begin () ; it != m_sdusBuffer.end () ; it++ )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (*it);
+                                  TriggerReceivePdcpPdu (*it);
                                 }
                               m_sdusBuffer.clear ();
                       break;
@@ -683,7 +713,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                               */
                               while ( m_sdusBuffer.size () > 1 )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                  TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
                                 }
 
@@ -707,7 +737,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                */
                               while ( ! m_sdusBuffer.empty () )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                  TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
                                 }
                       break;
@@ -734,7 +764,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                    */
                                   while ( m_sdusBuffer.size () > 1 )
                                     {
-                                      m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                      TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                       m_sdusBuffer.pop_front ();
                                     }
 
@@ -766,14 +796,14 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                               */
                               m_keepS0->AddAtEnd (m_sdusBuffer.front ());
                               m_sdusBuffer.pop_front ();
-                              m_rlcSapUser->ReceivePdcpPdu (m_keepS0);
+                              TriggerReceivePdcpPdu (m_keepS0);
 
                               /**
                                 * Deliver zero, one or multiple PDUs
                                 */
                               while ( ! m_sdusBuffer.empty () )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                  TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
                                 }
                       break;
@@ -796,14 +826,14 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                   */
                                   m_keepS0->AddAtEnd (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
-                                  m_rlcSapUser->ReceivePdcpPdu (m_keepS0);
+                                  TriggerReceivePdcpPdu (m_keepS0);
 
                                   /**
                                   * Deliver zero, one or multiple PDUs
                                   */
                                   while ( m_sdusBuffer.size () > 1 )
                                     {
-                                      m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                      TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                       m_sdusBuffer.pop_front ();
                                     }
 
@@ -846,7 +876,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                */
                               for ( it = m_sdusBuffer.begin () ; it != m_sdusBuffer.end () ; it++ )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (*it);
+                                  TriggerReceivePdcpPdu (*it);
                                 }
                               m_sdusBuffer.clear ();
                       break;
@@ -859,7 +889,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                */
                               while ( m_sdusBuffer.size () > 1 )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                  TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
                                 }
 
@@ -883,7 +913,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                */
                               while ( ! m_sdusBuffer.empty () )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                  TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
                                 }
                       break;
@@ -910,7 +940,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                   */
                                   while ( m_sdusBuffer.size () > 1 )
                                     {
-                                      m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                      TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                       m_sdusBuffer.pop_front ();
                                     }
 
@@ -947,7 +977,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                */
                               while ( ! m_sdusBuffer.empty () )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                  TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
                                 }
                       break;
@@ -965,7 +995,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                */
                               while ( m_sdusBuffer.size () > 1 )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                 TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
                                 }
 
@@ -995,7 +1025,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                */
                               while ( ! m_sdusBuffer.empty () )
                                 {
-                                  m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                  TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                   m_sdusBuffer.pop_front ();
                                 }
                       break;
@@ -1027,7 +1057,7 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
                                    */
                                   while ( m_sdusBuffer.size () > 1 )
                                     {
-                                      m_rlcSapUser->ReceivePdcpPdu (m_sdusBuffer.front ());
+                                      TriggerReceivePdcpPdu (m_sdusBuffer.front ());
                                       m_sdusBuffer.pop_front ();
                                     }
 
@@ -1056,6 +1086,27 @@ LteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
 
 }
 
+void
+LteRlcUm::TriggerReceivePdcpPdu(Ptr<Packet> p)
+{
+  if(!isDcEnb && !isDcUe)
+  {
+    NS_LOG_INFO(this << " RlcUm forwards packet to PDCP");
+    m_rlcSapUser->ReceivePdcpPdu(p);
+  }
+  else if(!isDcUe)
+  {
+    NS_LOG_INFO(this << " Secondary eNB Rlc Um forwards packet to remote PDCP");
+    m_ueX2DataParams.ueData = p;
+    m_epcX2RlcProvider->ReceiveDcPdcpSdu(m_ueX2DataParams);
+  }
+  else
+  {
+	NS_LOG_INFO(this << " Secondary UE Rlc Um forwards packet to remote PDCP");
+  	m_ueDcxDataParams.ueData = p;
+    m_ueDcxRlcProvider->ReceiveDcPdcpSdu(m_ueDcxDataParams);
+  }
+}
 
 void
 LteRlcUm::ReassembleOutsideWindow (void)

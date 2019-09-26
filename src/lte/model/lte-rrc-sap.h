@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2012 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,6 +19,11 @@
  *
  * Authors: Nicola Baldo <nbaldo@cttc.es>
  *          Lluis Parcerisa <lparcerisa@cttc.cat>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 
@@ -218,6 +225,7 @@ public:
     RlcConfig rlcConfig;
     uint8_t logicalChannelIdentity;
     LogicalChannelConfig logicalChannelConfig;
+    bool isDc;
   };
 
   struct PreambleInfo
@@ -589,6 +597,7 @@ public:
   struct RrcConnectionRequest
   {
     uint64_t ueIdentity;
+    bool isDc;
   };
 
   struct RrcConnectionSetup

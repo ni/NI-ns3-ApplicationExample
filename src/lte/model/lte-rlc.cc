@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Nicola Baldo <nbaldo@cttc.es>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 
@@ -86,11 +93,15 @@ LteRlc::LteRlc ()
   : m_rlcSapUser (0),
     m_macSapProvider (0),
     m_rnti (0),
-    m_lcid (0)
+    m_lcid (0),
+    isDcEnb(false), // TODO refactor this!!
+	isDcUe(false)
 {
   NS_LOG_FUNCTION (this);
   m_rlcSapProvider = new LteRlcSpecificLteRlcSapProvider<LteRlc> (this);
+  m_epcX2RlcUser = new EpcX2RlcSpecificUser<LteRlc> (this);
   m_macSapUser = new LteRlcSpecificLteMacSapUser (this);
+  m_ueDcxRlcUser = new UeDcxRlcSpecificUser<LteRlc> (this);
 }
 
 LteRlc::~LteRlc ()
@@ -121,6 +132,8 @@ LteRlc::DoDispose ()
   NS_LOG_FUNCTION (this);
   delete (m_rlcSapProvider);
   delete (m_macSapUser);
+  delete (m_epcX2RlcUser);
+  delete (m_ueDcxRlcUser);
 }
 
 void
@@ -165,6 +178,43 @@ LteRlc::GetLteMacSapUser ()
   return m_macSapUser;
 }
 
+void
+LteRlc::SetDcUeDataParams(EpcX2Sap::UeDataParams params)
+{
+  isDcEnb = true;
+  m_ueX2DataParams = params;
+}
+
+void
+LteRlc::SetEpcX2RlcProvider (EpcX2RlcProvider * s)
+{
+  m_epcX2RlcProvider = s;
+}
+
+EpcX2RlcUser*
+LteRlc::GetEpcX2RlcUser ()
+{
+  return m_epcX2RlcUser;
+}
+
+void
+LteRlc::SetDcUeDataParams(DaliUeDcxSap::UeDataParams params)
+{
+  isDcUe = true;
+  m_ueDcxDataParams = params;
+}
+
+void
+LteRlc::SetUeDcxRlcProvider (UeDcxRlcProvider * s)
+{
+  m_ueDcxRlcProvider = s;
+}
+
+UeDcxRlcUser*
+LteRlc::GetUeDcxRlcUser ()
+{
+  return m_ueDcxRlcUser;
+}
 
 
 ////////////////////////////////////////
@@ -271,6 +321,20 @@ LteRlcSm::ReportBufferStatus ()
   p.retxQueueHolDelay = 0;
   p.statusPduSize = 0;
   m_macSapProvider->ReportBufferStatus (p);
+}
+
+void
+LteRlcSm::DoSendDcPdcpSdu(EpcX2Sap::UeDataParams params)
+{
+  NS_LOG_FUNCTION(this);
+  NS_FATAL_ERROR("Not supported");
+}
+
+void
+LteRlcSm::DoSendDcPdcpSdu(DaliUeDcxSap::UeDataParams params)
+{
+  NS_LOG_FUNCTION(this);
+  NS_FATAL_ERROR("Not supported");
 }
 
 

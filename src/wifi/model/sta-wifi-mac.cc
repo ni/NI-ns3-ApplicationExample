@@ -788,6 +788,7 @@ StaWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
           if (assocResp.GetStatusCode ().IsSuccess ())
             {
               NI_LOG_DEBUG ("StaWifiMac::Receive: associated");
+              if (!NI_LOG_ENABLED) NI_LOG_CONSOLE_INFO("STA ASSOCIATED");
 
               SetState (ASSOCIATED);
               NS_LOG_DEBUG ("assoc completed");

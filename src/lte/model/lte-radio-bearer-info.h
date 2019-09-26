@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Nicola Baldo <nbaldo@cttc.es>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #ifndef LTE_RADIO_BEARER_INFO_H
@@ -26,6 +33,7 @@
 #include <ns3/eps-bearer.h>
 #include <ns3/lte-rrc-sap.h>
 #include <ns3/ipv4-address.h>
+#include <ns3/epc-x2-sap.h>
 
 namespace ns3 {
 
@@ -82,8 +90,29 @@ public:
   LteRrcSap::LogicalChannelConfig m_logicalChannelConfig;
   uint32_t m_gtpTeid; /**< S1-bearer GTP tunnel endpoint identifier, see 36.423 9.2.1 */
   Ipv4Address m_transportLayerAddress; /**< IP Address of the SGW, see 36.423 9.2.1 */
+  EpcX2Sap::RlcSetupRequest m_rlcSetupRequest; // complete bearer with related info, for DC functionalities
+  bool m_isDc; // true if a bearer is split
 };
 
+class RlcBearerInfo : public Object
+{
+public:
+  RlcBearerInfo (void);
+  virtual ~RlcBearerInfo (void);
+  static TypeId GetTypeId (void);
+
+    uint16_t    sourceCellId;
+    uint16_t    targetCellId;
+    uint32_t    gtpTeid;
+    uint16_t    secondaryRnti;
+    uint16_t    masterRnti;
+    uint8_t     drbid;
+    uint8_t     logicalChannelIdentity;
+    LteRrcSap::RlcConfig rlcConfig;
+    LteRrcSap::LogicalChannelConfig logicalChannelConfig;
+    LteEnbCmacSapProvider::LcInfo lcinfo;
+    Ptr<LteRlc> m_rlc;
+};
 
 
 

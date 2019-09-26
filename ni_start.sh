@@ -1,6 +1,8 @@
 #!/bin/bash
 
 RUN_NS3_LTE="./src/ni/scripts/run_ns3_lte.sh src/ni/scripts/configs/"
+RUN_NS3_LTE_DC="./src/ni/scripts/run_ns3_lte_dc.sh src/ni/scripts/configs/"
+RUN_NS3_LTE_DC_DALI="./src/ni/scripts/run_ns3_lte_dc_dali.sh src/ni/scripts/configs/"
 RUN_NS3_WIFI="./src/ni/scripts/run_ns3_wifi.sh src/ni/scripts/configs/"
 RUN_NS3_LTE_WIFI_EXT="./src/ni/scripts/run_ns3_lte_wifi_ext.sh src/ni/scripts/configs/"
 
@@ -83,7 +85,47 @@ else
           SHOW_HELP=1
           ;;
       esac
-      ;;        
+      ;;
+    LteDc) 
+      case "$2" in
+        BSTS) echo "Start ns-3 as BSTS in Lte example with $3."
+          $RUN_NS3_LTE_DC$3 $2
+          EXIT_CODE=$?
+          ;;
+        MBSTS) echo "Start ns-3 as MBSTS in Lte example with $3."
+          $RUN_NS3_LTE_DC$3 $2
+          EXIT_CODE=$?
+          ;;
+        SBSTS) echo "Start ns-3 as SBSTS in Lte example with $3."
+          $RUN_NS3_LTE_DC$3 $2
+          EXIT_CODE=$?
+          ;;
+        *)
+          echo "Error: No device chosen. Please choose between 'BS' and 'TS'!"
+          SHOW_HELP=1
+          ;;
+      esac
+      ;;
+    LteDcDali) 
+      case "$2" in
+        BSTS) echo "Start ns-3 as BSTS in Lte example with $3."
+          $RUN_NS3_LTE_DC_DALI$3 $2
+          EXIT_CODE=$?
+          ;;
+        MBSTS) echo "Start ns-3 as MBSTS in Lte example with $3."
+          $RUN_NS3_LTE_DC_DALI$3 $2
+          EXIT_CODE=$?
+          ;;
+        SBSTS) echo "Start ns-3 as SBSTS in Lte example with $3."
+          $RUN_NS3_LTE_DC_DALI$3 $2
+          EXIT_CODE=$?
+          ;;
+        *)
+          echo "Error: No device chosen. Please choose between 'BS' and 'TS'!"
+          SHOW_HELP=1
+          ;;
+      esac
+      ;;
     *) 
       echo "Error: Wrong simulation mode chosen. Please choose between 'Adhoc', 'Infra' or 'LteWiFi' or 'Lte'!"
       SHOW_HELP=1
@@ -98,9 +140,19 @@ if [ "$SHOW_HELP" == "1" ]
   echo ""
   echo "  ./ni_start.sh <mode> <device> <config file>"
   echo ""
-  echo "                <mode>        : {Adhoc, Infra, LteWiFi, Lte}"
-  echo "                <device>      : {Sta1, Sta2, Ap, Sta, BS, TS}"
+  echo "                <mode>        : {Adhoc, Infra, LteWiFi, Lte, LteDc, LteDcDali}"
+  echo "                <device>      : {Sta1, Sta2, Ap, Sta, BS, TS, BSTS}"
   echo "                <config file> : see src/ni/scripts/configs/"
+  echo ""
+  echo ""
+  echo "Examples for PHY simulation using single device:"
+  echo ""
+  echo "LteWiFi    : ./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext_no_loopback"
+  echo "Lte        : ./ni_start.sh Lte BSTS config_lte_no_loopback"
+  echo "LteDc      : ./ni_start.sh LteDc BSTS config_lte_dc_no_loopback"
+  echo "LteDcDali  : ./ni_start.sh LteDcDali BSTS config_lte_dc_dali_dl_no_loopback"
+  echo "             ./ni_start.sh LteDcDali BSTS config_lte_dc_dali_ul_no_loopback"
+  echo "             ./ni_start.sh LteDcDali BSTS config_lte_dc_dali_tcp_no_loopback"
   echo ""
   echo ""
   echo "Examples for UDP local loopback using single device:"

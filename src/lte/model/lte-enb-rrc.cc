@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2011 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, 2018, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,6 +20,11 @@
  * Authors: Nicola Baldo <nbaldo@cttc.es>
  *          Marco Miozzo <mmiozzo@cttc.es>
  *          Manuel Requena <manuel.requena@cttc.es>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #include "lte-enb-rrc.h"
@@ -40,6 +47,7 @@
 #include <ns3/lte-rlc-um.h>
 #include <ns3/lte-rlc-am.h>
 #include <ns3/lte-pdcp.h>
+#include <ns3/dali-enb-pdcp.h>
 
 #include "ns3/ni-logging.h"
 
@@ -111,6 +119,8 @@ static const std::string g_ueManagerStateName[UeManager::NUM_STATES] =
   "HANDOVER_JOINING",
   "HANDOVER_PATH_SWITCH",
   "HANDOVER_LEAVING",
+  "PREPARE_DALI_DUAL_CONNECTIVITY_CONFIGURATION",
+  "DALI_DUAL_CONNECTIVITY_CONFIGURATION"
 };
 
 /**
@@ -161,6 +171,8 @@ UeManager::DoInitialize ()
   m_physicalConfigDedicated.soundingRsUlConfigDedicated.srsBandwidth = 0;
   m_physicalConfigDedicated.havePdschConfigDedicated = true;
   m_physicalConfigDedicated.pdschConfigDedicated.pa = LteRrcSap::PdschConfigDedicated::dB0;
+
+  m_rlcMap.clear();
 
   m_rrc->m_cmacSapProvider->AddUe (m_rnti);
   m_rrc->m_cphySapProvider->AddUe (m_rnti);
@@ -261,6 +273,8 @@ UeManager::DoInitialize ()
       break;
     }
 
+  m_secondaryCellId = 0;
+  m_secondaryRnti = 0;
 }
 
 
@@ -291,6 +305,10 @@ TypeId UeManager::GetTypeId (void)
                    ObjectMapValue (),
                    MakeObjectMapAccessor (&UeManager::m_drbMap),
                    MakeObjectMapChecker<LteDataRadioBearerInfo> ())
+    .AddAttribute ("DataRadioRlcMap", "List of UE Secondary RLC by DRBID.",
+                   ObjectMapValue (),
+                   MakeObjectMapAccessor (&UeManager::m_rlcMap),
+                   MakeObjectMapChecker<RlcBearerInfo> ())
     .AddAttribute ("Srb0", "SignalingRadioBearerInfo for SRB0",
                    PointerValue (),
                    MakePointerAccessor (&UeManager::m_srb0),
@@ -328,15 +346,28 @@ UeManager::SetImsi (uint64_t imsi)
 }
 
 void
+UeManager::SetIsDc (bool isDc)
+{
+  m_isDc = isDc;
+}
+
+bool
+UeManager::GetIsDc () const
+{
+  return m_isDc;
+}
+
+void
 UeManager::SetupDataRadioBearer (EpsBearer bearer, uint8_t bearerId, uint32_t gtpTeid, Ipv4Address transportLayerAddress)
 {
   NS_LOG_FUNCTION (this << (uint32_t) m_rnti);
 
   Ptr<LteDataRadioBearerInfo> drbInfo = CreateObject<LteDataRadioBearerInfo> ();
   uint8_t drbid = AddDataRadioBearerInfo (drbInfo);
-  uint8_t lcid = Drbid2Lcid (drbid); 
+  uint8_t lcid = Drbid2Lcid (drbid);
   uint8_t bid = Drbid2Bid (drbid);
   NS_ASSERT_MSG ( bearerId == 0 || bid == bearerId, "bearer ID mismatch (" << (uint32_t) bid << " != " << (uint32_t) bearerId << ", the assumption that ID are allocated in the same way by MME and RRC is not valid any more");
+  drbInfo->m_epsBearer = bearer;
   drbInfo->m_epsBearerIdentity = bid;
   drbInfo->m_drbIdentity = drbid;
   drbInfo->m_logicalChannelIdentity = lcid;
@@ -370,13 +401,28 @@ UeManager::SetupDataRadioBearer (EpsBearer bearer, uint8_t bearerId, uint32_t gt
   // if we are using RLC/SM we don't care of anything above RLC
   if (rlcTypeId != LteRlcSm::GetTypeId ())
     {
-      Ptr<LtePdcp> pdcp = CreateObject<LtePdcp> ();
-      pdcp->SetRnti (m_rnti);
-      pdcp->SetLcId (lcid);
-      pdcp->SetLtePdcpSapUser (m_drbPdcpSapUser);
-      pdcp->SetLteRlcSapProvider (rlc->GetLteRlcSapProvider ());
-      rlc->SetLteRlcSapUser (pdcp->GetLteRlcSapUser ());
-      drbInfo->m_pdcp = pdcp;
+	  if (!m_rrc->m_isDualConnectivity)
+	  {
+        Ptr<LtePdcp> pdcp = CreateObject<LtePdcp> ();
+        pdcp->SetRnti (m_rnti);
+        pdcp->SetLcId (lcid);
+        pdcp->SetLtePdcpSapUser (m_drbPdcpSapUser);
+        pdcp->SetLteRlcSapProvider (rlc->GetLteRlcSapProvider ());
+        rlc->SetLteRlcSapUser (pdcp->GetLteRlcSapUser ());
+        drbInfo->m_pdcp = pdcp;
+	  }
+	  else
+	  {
+		Ptr<DaliEnbPdcp> pdcp = CreateObject<DaliEnbPdcp> (); // Modified with DaliEnbPdcp to support DC
+		                                                      // This will allow to add an X2 interface to pdcp
+		pdcp->SetRnti (m_rnti);
+		pdcp->SetLcId (lcid);
+		pdcp->SetLtePdcpSapUser (m_drbPdcpSapUser);
+		pdcp->SetLteRlcSapProvider (rlc->GetLteRlcSapProvider ());
+		pdcp->UseInSequenceDelivery(m_rrc->m_usePdcpInSequenceDelivery);
+		rlc->SetLteRlcSapUser (pdcp->GetLteRlcSapUser ());
+		drbInfo->m_pdcp = pdcp;
+	  }
     }
 
   LteEnbCmacSapProvider::LcInfo lcinfo;
@@ -412,7 +458,22 @@ UeManager::SetupDataRadioBearer (EpsBearer bearer, uint8_t bearerId, uint32_t gt
       drbInfo->m_logicalChannelConfig.prioritizedBitRateKbps = 0;
     }
   drbInfo->m_logicalChannelConfig.bucketSizeDurationMs = 1000;
+  
+  EpcX2Sap::RlcSetupRequest req;
+  req.sourceCellId = m_rrc->GetCellId();
+  req.gtpTeid = drbInfo->m_gtpTeid;
+  req.masterRnti = m_rnti;
+  req.drbid = drbid;
+  //req.lcinfo = lcinfo;
+  req.logicalChannelConfig = drbInfo->m_logicalChannelConfig;
+  req.rlcConfig = drbInfo->m_rlcConfig;
+  req.targetCellId = 0;
+  req.secondaryRnti = 0;
+  // secondaryRnti & targetCellId will be set before sending the request
+  drbInfo->m_rlcSetupRequest = req;
 
+  drbInfo->m_epsBearer = bearer;
+  drbInfo->m_isDc = false;
   ScheduleRrcConnectionReconfiguration ();
 }
 
@@ -513,6 +574,22 @@ UeManager::ScheduleRrcConnectionReconfiguration ()
         m_rrc->m_rrcSapUser->SendRrcConnectionReconfiguration (m_rnti, msg);
         RecordDataRadioBearersToBeStarted ();
         SwitchToState (CONNECTION_RECONFIGURATION);
+      }
+      break;
+
+    case PREPARE_DALI_DUAL_CONNECTIVITY_CONFIGURATION:
+      {
+    	m_pendingRrcConnectionReconfiguration = false;
+    	LteRrcSap::RrcConnectionReconfiguration msg = BuildRrcConnectionReconfiguration ();
+    	msg.haveMeasConfig = false;
+    	msg.haveMobilityControlInfo = false;
+    	msg.radioResourceConfigDedicated.srbToAddModList.clear();
+    	msg.radioResourceConfigDedicated.physicalConfigDedicated.haveAntennaInfoDedicated = false;
+    	msg.radioResourceConfigDedicated.physicalConfigDedicated.haveSoundingRsUlConfigDedicated = false;
+    	msg.radioResourceConfigDedicated.physicalConfigDedicated.havePdschConfigDedicated = false;
+    	m_rrc->m_rrcSapUser->SendRrcConnectionReconfiguration (m_rnti, msg);
+    	RecordDataRadioBearersToBeStarted ();
+    	SwitchToState (DALI_DUAL_CONNECTIVITY_CONFIGURATION);
       }
       break;
 
@@ -657,6 +734,7 @@ UeManager::SendData (uint8_t bid, Ptr<Packet> p)
     case HANDOVER_PREPARATION:
     case HANDOVER_JOINING:
     case HANDOVER_PATH_SWITCH:
+    case DALI_DUAL_CONNECTIVITY_CONFIGURATION:
       {
         NS_LOG_LOGIC ("queueing data on PDCP for transmission over the air");
         LtePdcpSapProvider::TransmitPdcpSduParameters params;
@@ -672,8 +750,8 @@ UeManager::SendData (uint8_t bid, Ptr<Packet> p)
             if (bearerInfo != NULL)
               {
                 LtePdcpSapProvider* pdcpSapProvider = bearerInfo->m_pdcp->GetLtePdcpSapProvider ();
-        pdcpSapProvider->TransmitPdcpSdu (params);
-      }
+                pdcpSapProvider->TransmitPdcpSdu (params);
+              }
           }
       }
       break;
@@ -785,6 +863,116 @@ UeManager::RecvUeContextRelease (EpcX2SapUser::UeContextReleaseParams params)
   m_handoverLeavingTimeout.Cancel ();
 }
 
+void
+UeManager::RecvRlcSetupRequest (EpcX2SapUser::RlcSetupRequest params) // TODO only on DALI DC SeNB
+{
+  if(m_isDc)
+  {
+    NS_LOG_INFO("Setup remote RLC in cell " << m_rrc->GetCellId());
+    NS_ASSERT_MSG(m_state==HANDOVER_JOINING || params.secondaryRnti == m_rnti, "Rnti not correct " << params.secondaryRnti << " " << m_rnti);
+
+    // setup TEIDs to receive data eventually forwarded over X2-U
+    LteEnbRrc::X2uTeidInfo x2uTeidInfo;
+    x2uTeidInfo.rnti = m_rnti;
+    x2uTeidInfo.drbid = params.drbid;
+    std::pair<std::map<uint32_t, LteEnbRrc::X2uTeidInfo>::iterator, bool> ret;
+    ret = m_rrc->m_x2uDcTeidInfoMap.insert (std::pair<uint32_t, LteEnbRrc::X2uTeidInfo> (params.gtpTeid, x2uTeidInfo));
+    // TODO overwrite may be legit, as in EpcX2::SetDcEpcX2PdcpUser
+    //NS_ASSERT_MSG (ret.second == true, "overwriting a pre-existing entry in m_x2uTeidInfoMap");
+    NS_LOG_INFO("Added entry in m_x2uDcTeidInfoMap");
+
+    // create new Rlc
+    // define a new struct similar to LteDataRadioBearerInfo with only rlc
+    Ptr<RlcBearerInfo> rlcInfo = CreateObject<RlcBearerInfo> ();
+    rlcInfo->targetCellId = params.sourceCellId; // i.e. the MeNB cell
+    rlcInfo->gtpTeid = params.gtpTeid;
+    rlcInfo->secondaryRnti = m_rnti;
+    rlcInfo->masterRnti = params.masterRnti;
+    rlcInfo->drbid = params.drbid;
+    rlcInfo->rlcConfig = params.rlcConfig;
+    rlcInfo->logicalChannelConfig = params.logicalChannelConfig;
+
+    uint8_t lcid = Drbid2Lcid(params.drbid);
+    uint8_t bid = Drbid2Bid (params.drbid);
+
+    EpsBearer bearer;
+    TypeId rlcTypeId = m_rrc->GetRlcType (bearer); // actually, this doesn't depend on bearer
+
+    ObjectFactory rlcObjectFactory;
+    rlcObjectFactory.SetTypeId (rlcTypeId);
+    Ptr<LteRlc> rlc = rlcObjectFactory.Create ()->GetObject<LteRlc> ();
+    NS_LOG_INFO("Created rlc " << rlc);
+    rlc->SetLteMacSapProvider (m_rrc->m_macSapProvider);
+    rlc->SetRnti (m_rnti);
+
+    rlcInfo->m_rlc = rlc;
+
+    rlc->SetLcId (lcid);
+
+    if (rlcTypeId != LteRlcSm::GetTypeId ())
+    {
+      // connect with remote PDCP
+      rlc->SetEpcX2RlcProvider (m_rrc->GetEpcX2RlcProvider());
+      EpcX2Sap::UeDataParams ueParams;
+      ueParams.sourceCellId = m_rrc->GetCellId();
+      ueParams.targetCellId = rlcInfo->targetCellId; // the MeNB cell
+      ueParams.gtpTeid = rlcInfo->gtpTeid;
+      rlc->SetDcUeDataParams(ueParams);
+      m_rrc->m_x2SapProvider->SetEpcX2RlcUser (params.gtpTeid, rlc->GetEpcX2RlcUser());
+    }
+
+    LteEnbCmacSapProvider::LcInfo lcinfo;
+    lcinfo.rnti = m_rnti;
+    lcinfo.lcId = lcid;
+    lcinfo.lcGroup = m_rrc->GetLogicalChannelGroup (bearer);
+    lcinfo.qci = bearer.qci;
+    lcinfo.isGbr = bearer.IsGbr ();
+    lcinfo.mbrUl = bearer.gbrQosInfo.mbrUl;
+    lcinfo.mbrDl = bearer.gbrQosInfo.mbrDl;
+    lcinfo.gbrUl = bearer.gbrQosInfo.gbrUl;
+    lcinfo.gbrDl = bearer.gbrQosInfo.gbrDl;
+      m_rrc->m_cmacSapProvider->AddLc (lcinfo, rlc->GetLteMacSapUser ());
+
+    //rlcInfo->lcinfo = lcinfo;
+
+    rlcInfo->logicalChannelIdentity = lcid;
+    rlcInfo->logicalChannelConfig.priority = m_rrc->GetLogicalChannelPriority (bearer);
+    rlcInfo->logicalChannelConfig.logicalChannelGroup = m_rrc->GetLogicalChannelGroup (bearer);
+    if (bearer.IsGbr ())
+      {
+        rlcInfo->logicalChannelConfig.prioritizedBitRateKbps = params.logicalChannelConfig.prioritizedBitRateKbps;
+      }
+    else
+      {
+        rlcInfo->logicalChannelConfig.prioritizedBitRateKbps = 0;
+      }
+    rlcInfo->logicalChannelConfig.bucketSizeDurationMs = params.logicalChannelConfig.bucketSizeDurationMs;
+
+    m_rlcMap[params.drbid] = rlcInfo; //TODO add assert
+
+    // Ack the LTE BS, that will trigger the setup in the UE
+    EpcX2Sap::UeDataParams ackParams;
+    ackParams.sourceCellId = params.targetCellId;
+    ackParams.targetCellId = params.sourceCellId;
+    ackParams.gtpTeid = params.gtpTeid;
+    m_rrc->m_x2SapProvider->SendRlcSetupCompleted(ackParams);
+  }
+  else
+  {
+    NS_FATAL_ERROR("This is not a DALI DC device");
+  }
+}
+
+void
+UeManager::RecvRlcSetupCompleted(uint8_t drbid)
+{
+  NS_ASSERT_MSG(m_drbMap.find(drbid) != m_drbMap.end(), "The drbid does not match");
+  NS_LOG_INFO("Setup completed for split DataRadioBearer Dual Connectivity " << (uint16_t)drbid);
+  m_drbMap.find(drbid)->second->m_isDc = true;
+
+  SwitchToState(PREPARE_DALI_DUAL_CONNECTIVITY_CONFIGURATION);
+  ScheduleRrcConnectionReconfiguration();
+}
 
 // methods forwarded from RRC SAP
 
@@ -805,12 +993,16 @@ UeManager::RecvRrcConnectionRequest (LteRrcSap::RrcConnectionRequest msg)
     case INITIAL_RANDOM_ACCESS:
       {
         m_connectionRequestTimeout.Cancel ();
+        
+        m_isDc = msg.isDc;
 
         if (m_rrc->m_admitRrcConnectionRequest == true)
           {
             m_imsi = msg.ueIdentity;
-            if (m_rrc->m_s1SapProvider != 0)
+            m_rrc->RegisterImsiToRnti(m_imsi, m_rnti);
+            if (!m_isDc && m_rrc->m_s1SapProvider != 0)
               {
+            	NI_LOG_CONSOLE_DEBUG("LTE.ENB.RRC: calling InitialUeMessage, IMSI: " << m_imsi << ", RNTI: " << m_rnti);
                 m_rrc->m_s1SapProvider->InitialUeMessage (m_imsi, m_rnti);
               }
 
@@ -876,6 +1068,26 @@ UeManager::RecvRrcConnectionReconfigurationCompleted (LteRrcSap::RrcConnectionRe
   NS_LOG_FUNCTION (this);
   switch (m_state)
     {
+    case DALI_DUAL_CONNECTIVITY_CONFIGURATION:
+                // cycle on the DC bearers and perform switch to LTE Dual Connectivity connection
+      for (std::map <uint8_t, Ptr<LteDataRadioBearerInfo> >::iterator it =  m_drbMap.begin ();
+    		  it != m_drbMap.end ();
+    		  ++it)
+      {
+    	if(it->second->m_isDc)
+    	{
+    	  Ptr<DaliEnbPdcp> pdcp = DynamicCast<DaliEnbPdcp>(it->second->m_pdcp);
+    	  if(pdcp != 0)
+    	  {
+    		pdcp->UseDualConnectivity(m_rrc->m_splitBearerEnb); // Activate Split Bearer on PDCP eNB side according to splitBearerEnb value
+    	  }
+    	  else
+    	  {
+    		NS_FATAL_ERROR("A device defined as DC has not a DaliEnbPdcp");
+    	  }
+    	}
+      }
+      // no break so that also the CONNECTION_RECONFIGURATION code is executed
     case CONNECTION_RECONFIGURATION:
       StartDataRadioBearers ();
       if (m_needPhyMacConfiguration)
@@ -1015,6 +1227,70 @@ UeManager::RecvMeasurementReport (LteRrcSap::MeasurementReport msg)
 
 } // end of UeManager::RecvMeasurementReport
 
+void
+UeManager::RecvRrcSecondaryCellDualConnectivityRequest(uint16_t secondaryRnti, uint16_t secondaryCellId)
+{
+  m_secondaryCellId = secondaryCellId;
+  m_secondaryRnti = secondaryRnti;
+
+  NS_LOG_INFO("Map size " << m_drbMap.size());
+
+  // If the Map size is > 0 (Bearers already setup in the LTE cell) perform this action
+  // immediately, otherwise wait for the InitialContextSetupResponse in EpcEnbApplication
+  // that calls DataRadioBearerSetupRequest
+  if(m_drbMap.size() == 0)
+  {
+	  NS_FATAL_ERROR("Trying to set up DC where no DALI setup is configured");
+    return;
+  }
+  else
+  {
+    for (std::map <uint8_t, Ptr<LteDataRadioBearerInfo> >::iterator it = m_drbMap.begin ();
+       it != m_drbMap.end ();
+       ++it)
+    {
+      if(!(it->second->m_isDc))
+      {
+        Ptr<DaliEnbPdcp> pdcp = DynamicCast<DaliEnbPdcp> (it->second->m_pdcp);
+        if (pdcp != 0)
+        {
+          // Get the EPC X2 and set it in the PDCP
+          pdcp->SetEpcX2PdcpProvider(m_rrc->GetEpcX2PdcpProvider());
+          // Set UeDataParams
+          EpcX2Sap::UeDataParams params;
+          params.sourceCellId = m_rrc->GetCellId();
+          params.targetCellId = m_secondaryCellId;
+          params.gtpTeid = it->second->m_gtpTeid;
+          pdcp->SetUeDataParams(params);
+          pdcp->SetSenbRnti(secondaryRnti);
+          // Setup TEIDs for receiving data eventually forwarded over X2-U
+          LteEnbRrc::X2uTeidInfo x2uTeidInfo;
+          x2uTeidInfo.rnti = m_rnti;
+          x2uTeidInfo.drbid = it->first;
+          std::pair<std::map<uint32_t, LteEnbRrc::X2uTeidInfo>::iterator, bool> ret;
+          ret = m_rrc->m_x2uDcTeidInfoMap.insert (std::pair<uint32_t, LteEnbRrc::X2uTeidInfo> (it->second->m_gtpTeid, x2uTeidInfo));
+          // Setup DcEpcX2PdcpUser
+          m_rrc->m_x2SapProvider->SetEpcX2PdcpUser(it->second->m_gtpTeid, pdcp->GetEpcX2PdcpUser());
+
+          // Create a remote RLC, pass along the UeDataParams + secondaryRnti
+          EpcX2SapProvider::RlcSetupRequest rlcParams = it->second->m_rlcSetupRequest;
+          rlcParams.targetCellId = m_secondaryCellId;
+          rlcParams.secondaryRnti = secondaryRnti;
+
+          m_rrc->m_x2SapProvider->SendRlcSetupRequest(rlcParams);
+        }
+        else
+        {
+          NS_FATAL_ERROR("Trying to setup a DALI DC device with a non DC capable PDCP");
+        }
+      }
+      else
+      {
+        NS_LOG_INFO("DC Bearer already setup"); // TODO consider bearer modifications
+      }
+    }
+  }
+}
 
 // methods forwarded from CMAC SAP
 
@@ -1188,6 +1464,7 @@ UeManager::BuildRadioResourceConfigDedicated ()
       dtam.rlcConfig = it->second->m_rlcConfig;
       dtam.logicalChannelIdentity = it->second->m_logicalChannelIdentity;
       dtam.logicalChannelConfig = it->second->m_logicalChannelConfig;
+      dtam.isDc = it->second->m_isDc;
       rrcd.drbToAddModList.push_back (dtam);
     }
 
@@ -1252,9 +1529,14 @@ UeManager::SwitchToState (State newState)
 
   NI_LOG_INFO ("UeManager::UeManager::SwitchToState: imsi=" << m_imsi << " rnti=" << m_rnti << " " << ToString (oldState) << " --> " << ToString (newState) );
   NI_LOG_CONSOLE_DEBUG ("LTE.ENB.RRC: " << ToString (oldState) << " --> " << ToString (newState) << " (IMSI=" << m_imsi << ", RNTI=" << m_rnti << ")");
-  if ((!NI_LOG_ENABLED) && oldState == CONNECTION_RECONFIGURATION && newState == CONNECTED_NORMALLY)
+  if ( (!NI_LOG_ENABLED) && (oldState == CONNECTION_RECONFIGURATION && newState == CONNECTED_NORMALLY) )
     {
       NI_LOG_CONSOLE_INFO("ENB RRC CONNECTED");
+    }
+
+  if ( (!NI_LOG_ENABLED) && (oldState == DALI_DUAL_CONNECTIVITY_CONFIGURATION && newState == CONNECTED_NORMALLY) )
+    {
+      NI_LOG_CONSOLE_INFO("ENB RRC CONNECTED (DC)");
     }
 
   switch (newState)
@@ -1312,7 +1594,12 @@ LteEnbRrc::LteEnbRrc ()
     m_lastAllocatedRnti (0),
     m_srsCurrentPeriodicityId (0),
     m_lastAllocatedConfigurationIndex (0),
-    m_reconfigureUes (false)
+    m_reconfigureUes (false),
+	m_isDualConnectivity (false),
+    m_isMasterEnb (false),
+	m_isSecondaryEnb (false),
+	m_usePdcpInSequenceDelivery (false),
+	m_splitBearerEnb (false)
 {
   NS_LOG_FUNCTION (this);
   m_cmacSapUser = new EnbRrcMemberLteEnbCmacSapUser (this);
@@ -1471,7 +1758,31 @@ LteEnbRrc::GetTypeId (void)
                    UintegerValue (4),
                    MakeUintegerAccessor (&LteEnbRrc::m_rsrqFilterCoefficient),
                    MakeUintegerChecker<uint8_t> (0))
-
+	.AddAttribute ("DualConnectivity",
+		 	 	   "True if this is the RRC of a DALI Dual Connectivity Device. It also use the value of SecondaryRRC to identify the sUE",
+				   BooleanValue (false),
+				   MakeBooleanAccessor (&LteEnbRrc::m_isDualConnectivity),
+				   MakeBooleanChecker ())
+	.AddAttribute ("isMasterEnb",
+		    	   "Indicates whether RRC is for a Dual Connectivity Master base station",
+				   BooleanValue (false),
+				   MakeBooleanAccessor (&LteEnbRrc::m_isMasterEnb),
+				   MakeBooleanChecker ())
+    .AddAttribute ("isSecondaryEnb",
+		           "Indicates whether RRC is for a Dual Connectivity Secondary base station",
+				   BooleanValue (false),
+				   MakeBooleanAccessor (&LteEnbRrc::m_isSecondaryEnb),
+				   MakeBooleanChecker ())
+	.AddAttribute ("usePdcpInSequenceDelivery",
+		           "Indicates whether PDCP will reorder received packets before sending them to the upper layer",
+				   BooleanValue (false),
+				   MakeBooleanAccessor (&LteEnbRrc::m_usePdcpInSequenceDelivery),
+				   MakeBooleanChecker ())
+	.AddAttribute ("splitBearerEnb",
+		           "Indicates whether PDCP on eNB side will split bearer in Downlink direction",
+				   BooleanValue (false),
+				   MakeBooleanAccessor (&LteEnbRrc::m_splitBearerEnb),
+				   MakeBooleanChecker ())
     // Trace sources
     .AddTraceSource ("NewUeContext",
                      "Fired upon creation of a new UE context.",
@@ -1501,6 +1812,18 @@ LteEnbRrc::GetTypeId (void)
   return tid;
 }
 
+bool
+LteEnbRrc::GetIsMasterEnb () const
+{
+  return m_isMasterEnb;
+}
+
+bool
+LteEnbRrc::GetIsSecondaryEnb () const
+{
+  return m_isSecondaryEnb;
+}
+
 void
 LteEnbRrc::SetEpcX2SapProvider (EpcX2SapProvider * s)
 {
@@ -1513,6 +1836,32 @@ LteEnbRrc::GetEpcX2SapUser ()
 {
   NS_LOG_FUNCTION (this);
   return m_x2SapUser;
+}
+
+void
+LteEnbRrc::SetEpcX2PdcpProvider (EpcX2PdcpProvider * s)
+{
+  NS_LOG_FUNCTION (this << s);
+  m_x2PdcpProvider = s;
+}
+
+void
+LteEnbRrc::SetEpcX2RlcProvider (EpcX2RlcProvider * s)
+{
+  NS_LOG_FUNCTION (this << s);
+  m_x2RlcProvider = s;
+}
+
+EpcX2PdcpProvider*
+LteEnbRrc::GetEpcX2PdcpProvider () const
+{
+  return m_x2PdcpProvider;
+}
+
+EpcX2RlcProvider*
+LteEnbRrc::GetEpcX2RlcProvider () const
+{
+  return m_x2RlcProvider;
 }
 
 void
@@ -1634,7 +1983,60 @@ LteEnbRrc::GetUeManager (uint16_t rnti)
   NS_ASSERT (0 != rnti);
   std::map<uint16_t, Ptr<UeManager> >::iterator it = m_ueMap.find (rnti);
   NS_ASSERT_MSG (it != m_ueMap.end (), "RNTI " << rnti << " not found in eNB with cellId " << m_cellId);
+  if (!(it != m_ueMap.end ()))
+    {
+      NI_LOG_FATAL("UeManager for RNTI " << rnti << " not found in eNB with cellId " << m_cellId << ". Check Dual Connectivity settings!");
+    }
   return it->second;
+}
+
+void
+LteEnbRrc::RegisterImsiToRnti(uint64_t imsi, uint16_t rnti)
+{
+  if(m_imsiRntiMap.find(imsi) == m_imsiRntiMap.end())
+  {
+    m_imsiRntiMap.insert(std::pair<uint64_t, uint16_t> (imsi, rnti));
+    NS_LOG_INFO("New entry in m_imsiRntiMap, for rnti " << rnti << " m_isMasterEnb " << m_isMasterEnb << " m_isSecondaryEnb " << m_isSecondaryEnb);
+  }
+  else
+  {
+    m_imsiRntiMap.find(imsi)->second = rnti;
+  }
+
+  if(m_rntiImsiMap.find(rnti) == m_rntiImsiMap.end())
+  {
+    m_rntiImsiMap.insert(std::pair<uint16_t, uint64_t> (rnti, imsi));
+  }
+  else
+  {
+    m_rntiImsiMap.find(rnti)->second = imsi;
+  }
+}
+
+uint16_t
+LteEnbRrc::GetRntiFromImsi(uint64_t imsi)
+{
+  if(m_imsiRntiMap.find(imsi) != m_imsiRntiMap.end())
+  {
+    return m_imsiRntiMap.find(imsi)->second;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+uint64_t
+LteEnbRrc::GetImsiFromRnti(uint16_t rnti)
+{
+  if(m_rntiImsiMap.find(rnti) != m_rntiImsiMap.end())
+  {
+    return m_rntiImsiMap.find(rnti)->second;
+  }
+  else
+  {
+    return 0;
+  }
 }
 
 uint8_t
@@ -1804,6 +2206,12 @@ LteEnbRrc::SetCellId (uint16_t cellId)
   m_cphySapProvider->SetSystemInformationBlockType1 (m_sib1);
 }
 
+uint16_t
+LteEnbRrc::GetCellId () const
+{
+  return m_cellId;
+}
+
 bool
 LteEnbRrc::SendData (Ptr<Packet> packet)
 {
@@ -1928,6 +2336,13 @@ LteEnbRrc::DoRecvMeasurementReport (uint16_t rnti, LteRrcSap::MeasurementReport 
 {
   NS_LOG_FUNCTION (this << rnti);
   GetUeManager (rnti)->RecvMeasurementReport (msg);
+}
+
+void
+LteEnbRrc::DoRecvRrcSecondaryCellDualConnectivityRequest (uint16_t rnti, uint16_t secondaryRnti, uint16_t secondaryCellId)
+{
+  NS_LOG_FUNCTION (this << rnti);
+  GetUeManager (rnti)->RecvRrcSecondaryCellDualConnectivityRequest (secondaryRnti, secondaryCellId);
 }
 
 void 
@@ -2125,6 +2540,38 @@ LteEnbRrc::DoRecvResourceStatusUpdate (EpcX2SapUser::ResourceStatusUpdateParams 
 }
 
 void
+LteEnbRrc::DoRecvRlcSetupRequest (EpcX2SapUser::RlcSetupRequest params)
+{
+  NS_LOG_FUNCTION (this);
+
+  NS_LOG_LOGIC ("Recv X2 message: RLC SETUP REQUEST");
+
+  GetUeManager(params.secondaryRnti)->RecvRlcSetupRequest(params);
+}
+
+void
+LteEnbRrc::DoRecvRlcSetupCompleted (EpcX2SapUser::UeDataParams params)
+{
+  NS_LOG_FUNCTION (this);
+
+  NS_LOG_LOGIC ("Recv X2 message: RLC SETUP COMPLETED");
+
+  std::map<uint32_t, X2uTeidInfo>::iterator
+    teidInfoIt = m_x2uDcTeidInfoMap.find (params.gtpTeid);
+  if (teidInfoIt != m_x2uDcTeidInfoMap.end ())
+    {
+	  if (m_isMasterEnb)  // is MeNB for DALI Dual Connectivity?
+		GetUeManager (teidInfoIt->second.rnti)->RecvRlcSetupCompleted (teidInfoIt->second.drbid);
+	  else
+		NS_FATAL_ERROR ("Non MeNB received RlcSetupCompleted message");
+    }
+  else
+    {
+      NS_FATAL_ERROR ("No X2uDcTeidInfo found");
+    }
+}
+
+void
 LteEnbRrc::DoRecvUeData (EpcX2SapUser::UeDataParams params)
 {
   NS_LOG_FUNCTION (this);
@@ -2144,7 +2591,15 @@ LteEnbRrc::DoRecvUeData (EpcX2SapUser::UeDataParams params)
     }
   else
     {
-      NS_FATAL_ERROR ("X2-U data received but no X2uTeidInfo found");
+      teidInfoIt = m_x2uDcTeidInfoMap.find(params.gtpTeid);
+      if(teidInfoIt != m_x2uDcTeidInfoMap.end ())
+      {
+        GetUeManager (teidInfoIt->second.rnti)->SendData (teidInfoIt->second.drbid, params.ueData);
+      }
+      else
+      {
+        NS_FATAL_ERROR ("X2-U data received but no X2uTeidInfo found");
+      }
     }
 }
 
@@ -2293,10 +2748,11 @@ LteEnbRrc::RemoveUe (uint16_t rnti)
   std::map <uint16_t, Ptr<UeManager> >::iterator it = m_ueMap.find (rnti);
   NS_ASSERT_MSG (it != m_ueMap.end (), "request to remove UE info with unknown rnti " << rnti);
   uint16_t srsCi = (*it).second->GetSrsConfigurationIndex ();
+  bool isDc = it->second->GetIsDc();
   m_ueMap.erase (it);
   m_cmacSapProvider->RemoveUe (rnti);
   m_cphySapProvider->RemoveUe (rnti);
-  if (m_s1SapProvider != 0)
+  if (m_s1SapProvider != 0 && !isDc)
     {
       m_s1SapProvider->UeContextRelease (rnti);
     }

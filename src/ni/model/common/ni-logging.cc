@@ -45,8 +45,8 @@ namespace ns3 {
 
   NiLogging::NiLogging(void)
   {
-    m_logIsEnable=false;
-    m_fileOut="";
+    m_logIsEnable = false;
+    m_fileOut = "";
     m_isFirstCall = true;
     m_syncToFileInstant = false;
     m_loglevelMask = LOG__NONE;
@@ -68,7 +68,7 @@ namespace ns3 {
       }
     if(sem_init (&m_semMsgCount, 0, 0) != 0)
       {
-        NS_FATAL_ERROR("\nNiLogging::Initialize: Error calling sem_init!");
+        NS_FATAL_ERROR("NiLogging::Initialize: Error calling sem_init!");
       }
 
     if (loglevelMask == LOG__NONE)
@@ -77,7 +77,6 @@ namespace ns3 {
       }
     else
       {
-        //TODO add more log levels
         m_logIsEnable = true;
       }
     m_loglevelMask = loglevelMask;
@@ -99,10 +98,14 @@ namespace ns3 {
   void
   NiLogging::DeInitialize (void)
   {
-    terminateWriteThread();
-    WriteToFile();
-    pthread_mutex_destroy(&m_logMutex);
-    sem_destroy(&m_semMsgCount);
+    if (m_logIsEnable)
+      {
+        terminateWriteThread();
+        WriteToFile();
+        pthread_mutex_destroy(&m_logMutex);
+        sem_destroy(&m_semMsgCount);
+        m_logIsEnable = false;
+      }
   }
 
   //Disable first call in write() function!!
@@ -123,7 +126,7 @@ namespace ns3 {
     // Now we reduce the priority of this thread
     NiUtils::SetThreadPrioriy(m_logThreadPriority);
 
-    const uint32_t numMsgflushCnsl = 4; // after this number of log messages the console will be flushed
+    const uint32_t numMsgflushCnsl = 8; // after this number of log messages the console will be flushed
     uint32_t countMsgCnsl = 0;
     while(true)
       {
@@ -133,21 +136,27 @@ namespace ns3 {
 
         if (sem_wait (&m_semMsgCount) < 0)
           {
-            NS_FATAL_ERROR("\nNiLogging:writeThread::Error calling sem_wait!");
+            NS_FATAL_ERROR("NiLogging:writeThread::Error calling sem_wait!");
           }
         if(m_flagStopWriteThread)
           {
-            //std::cout << "Terminating logging thread...\n" <<std::endl;
-            return;
+            // terminate if message queue is empty
+            int numMsg;
+            sem_getvalue(&m_semMsgCount, &numMsg);
+            if (numMsg <= 0)
+              {
+                std::cout << "Terminating logging thread...\n" <<std::endl;
+                return;
+              }
           }
         if (pthread_mutex_lock (&m_logMutex) != 0)
           {
-            NS_FATAL_ERROR("\nNiLogging::writeThread::Error calling pthread_mutex_lock!");
+            NS_FATAL_ERROR("NiLogging::writeThread::Error calling pthread_mutex_lock!");
           }
         // get logging element from the queue
         if(m_msgQueue.size() == 0)
           {
-            NS_FATAL_ERROR("\nNiLogging::writeThread::msgQueue length is zero!");
+            NS_FATAL_ERROR("NiLogging::writeThread::msgQueue length is zero!");
           }
         else
           {
@@ -156,59 +165,56 @@ namespace ns3 {
           }
         if (pthread_mutex_unlock (&m_logMutex) != 0)
           {
-            NS_FATAL_ERROR("\nNiLogging::writeThread::Error calling pthread_mutex_lock!");
+            NS_FATAL_ERROR("NiLogging::writeThread::Error calling pthread_mutex_lock!");
           }
 
         funcInfo = ", " + logInfo.func + "(), ";
         timingInfo = ", Sim(us)=" + std::to_string(logInfo.simTimeUs)  +  ", Sys(us)=" + std::to_string(logInfo.sysTimeUs);
 
-        if (logInfo.logLevel & m_loglevelMask)
-          {
-            switch (logInfo.logLevel) {
-              case LOG__NONE:
-                break;
-              case LOG__FATAL:
-                msgBufferStream << "[FATAL]" << timingInfo << sourceInfo << ", " << logInfo.buffer;
-                break;
-              case LOG__ERROR:
-                msgBufferStream << "[ERROR]" << timingInfo << funcInfo << logInfo.buffer;
-                break;
-              case LOG__WARN:
-                msgBufferStream << "[WARN ]" << timingInfo << funcInfo << logInfo.buffer;
-                break;
-              case LOG__INFO:
-                msgBufferStream << "[INFO ]" << timingInfo << funcInfo << logInfo.buffer;
-                break;
-              case LOG__DEBUG:
-                msgBufferStream << "[DEBUG]" << timingInfo << funcInfo << logInfo.buffer;
-                break;
-              case LOG__TRACE:
-                msgBufferStream << "[TRACE]" << ", " << logInfo.simTimeUs << "," << logInfo.sysTimeUs << ", " << logInfo.buffer;
-                break;
-              case LOG__CONSOLE_DEBUG:
-                msgBufferStream << "[CNSL ]" << timingInfo << funcInfo << logInfo.buffer;
-                std::cout << logInfo.buffer << std::endl;
-                if (countMsgCnsl % numMsgflushCnsl) fflush( stdout );
-                countMsgCnsl++;
-                break;
-              default:
-                NS_FATAL_ERROR("\nNiLogging::writeThread:: Error undefined loglevel:" << logInfo.logLevel);
-                break;
-            }
+        switch (logInfo.logLevel) {
+          case LOG__NONE:
+            break;
+          case LOG__FATAL:
+            msgBufferStream << "[FATAL]" << timingInfo << sourceInfo << ", " << logInfo.buffer;
+            break;
+          case LOG__ERROR:
+            msgBufferStream << "[ERROR]" << timingInfo << funcInfo << logInfo.buffer;
+            break;
+          case LOG__WARN:
+            msgBufferStream << "[WARN ]" << timingInfo << funcInfo << logInfo.buffer;
+            break;
+          case LOG__INFO:
+            msgBufferStream << "[INFO ]" << timingInfo << funcInfo << logInfo.buffer;
+            break;
+          case LOG__DEBUG:
+            msgBufferStream << "[DEBUG]" << timingInfo << funcInfo << logInfo.buffer;
+            break;
+          case LOG__TRACE:
+            msgBufferStream << "[TRACE]" << ", " << logInfo.simTimeUs << "," << logInfo.sysTimeUs << ", " << logInfo.buffer;
+            break;
+          case LOG__CONSOLE_DEBUG:
+            msgBufferStream << "[CNSL ]" << timingInfo << funcInfo << logInfo.buffer;
+            std::cout << logInfo.buffer << std::endl;
+            if (countMsgCnsl % numMsgflushCnsl) fflush( stdout );
+            countMsgCnsl++;
+            break;
+          default:
+            NS_FATAL_ERROR("NiLogging::writeThread:: Error undefined loglevel:" << logInfo.logLevel);
+            break;
+        }
 
-            // Now we write to file pointer
-            if (m_syncToFileInstant)
-              {
-                // write to file
-                m_filePtr << msgBufferStream.str() << std::endl;
-              }
-            else
-              {
-                // write into circular buffer
-                m_logStringBuffer[m_curLogBufferEntry].str(std::string()); // clear the stringstream
-                m_logStringBuffer[m_curLogBufferEntry] << msgBufferStream.str() << std::endl;
-                m_curLogBufferEntry =  (m_curLogBufferEntry+1) % NI_LOG__BUFFER_SIZE;
-              }
+        // Now we write to file pointer
+        if (m_syncToFileInstant)
+          {
+            // write to file
+            m_filePtr << msgBufferStream.str() << std::endl;
+          }
+        else
+          {
+            // write into circular buffer
+            m_logStringBuffer[m_curLogBufferEntry].str(std::string()); // clear the stringstream
+            m_logStringBuffer[m_curLogBufferEntry] << msgBufferStream.str() << std::endl;
+            m_curLogBufferEntry =  (m_curLogBufferEntry+1) % NI_LOG__BUFFER_SIZE;
           }
       }
   }
@@ -216,6 +222,12 @@ namespace ns3 {
   void
   NiLogging::Write (const enum NiLogLevel logLevel, const std::string file, const int line, const std::string func, const std::string &buffer)
   {
+    if ( (m_logIsEnable == false) ||                     // No need to log because logging disabled
+         ((logLevel & m_loglevelMask) == LOG__NONE) ||   // No need to log because log level does not match
+         (m_flagStopWriteThread == true) )               // prevent access to logging because logging thread was already stopped
+      {
+        return;
+      }
     if(buffer.length() <= 0)
       {
         return; //No need to log anything if the message field is zero
@@ -249,41 +261,63 @@ namespace ns3 {
     logInfo.func = func;
     logInfo.buffer = buffer;
 
-    // put messages to logfile
     if (pthread_mutex_lock (&m_logMutex) != 0)
       {
-        NS_FATAL_ERROR("\nNiLogging::Write::Error calling pthread_mutex_lock!");
+        NS_FATAL_ERROR("NiLogging::Write::Error calling pthread_mutex_lock!");
       }
 
+    // put messages to logging thread
     m_msgQueue.push_back(logInfo);
 
     if (pthread_mutex_unlock (&m_logMutex) != 0)
       {
-        NS_FATAL_ERROR("\nNiLogging::Write::Error calling pthread_mutex_lock!");
+        NS_FATAL_ERROR("NiLogging::Write::Error calling pthread_mutex_lock!");
       }
     if (sem_post (&m_semMsgCount) < 0)
       {
-        NS_FATAL_ERROR("\nNiLogging::Write::Error calling sem_post!");
+        NS_FATAL_ERROR("NiLogging::Write::Error calling sem_post!");
       }
 
     // stop system on FATAL ERROR and print out debugging info
     if (logInfo.logLevel == LOG__FATAL)
       {
-        std::string funcInfo = ", " + logInfo.func + "(), ";
-        std::string timingInfo = ", Sim(us)=" + std::to_string(logInfo.simTimeUs)  +  ", Sys(us)=" + std::to_string(logInfo.sysTimeUs);
-        std::string sourceInfo = ", " + logInfo.file + ", line " + std::to_string(logInfo.line) + funcInfo;
-        // print out to stdout
-        std::cout << std::endl << "[FATAL]" << timingInfo << sourceInfo << ", " << logInfo.buffer << std::endl << std::endl;
-        fflush( stdout );
-        // stop logging
-        NiLoggingDeInit();
-        struct timespec ts = {1,0};
-        nanosleep( &ts, NULL );
-        // print call stack
-        NiUtils::Backtrace();
-        // stop NS-3
-        NS_FATAL_ERROR ("NI_LOG_FATAL"); // this also stops the whole application
+        Fatal(logInfo);
       }
+  }
+
+  void
+  NiLogging::WriteFatal (const enum NiLogLevel logLevel, const std::string file, const int line, const std::string func, const std::string &buffer)
+  {
+    niLogInfo logInfo;
+
+    logInfo.simTimeUs = Simulator::Now().GetMicroSeconds();
+    logInfo.sysTimeUs = 0;
+    logInfo.logLevel = logLevel;
+    logInfo.file = file;
+    logInfo.line = line;
+    logInfo.func = func;
+    logInfo.buffer = buffer;
+
+    Fatal(logInfo);
+  }
+
+  inline void
+  NiLogging::Fatal(niLogInfo logInfo)
+  {
+    std::string funcInfo = ", " + logInfo.func + "()";
+    std::string timingInfo = ", Sim(us)=" + std::to_string(logInfo.simTimeUs)  +  ", Sys(us)=" + std::to_string(logInfo.sysTimeUs);
+    std::string sourceInfo = ", " + logInfo.file + ", line " + std::to_string(logInfo.line) + funcInfo;
+    // print out to stdout
+    std::cout << std::endl << "[FATAL]" << timingInfo << sourceInfo << ", " << logInfo.buffer << std::endl << std::endl;
+    fflush( stdout );
+    struct timespec ts = {1,0};
+    nanosleep( &ts, NULL );
+    // print call stack
+    NiUtils::Backtrace();
+    // stop logging
+    DeInitialize();
+    // stop NS-3
+    NS_FATAL_ERROR ("NI_LOG_FATAL"); // this also stops the whole application
   }
 
   void
@@ -293,7 +327,7 @@ namespace ns3 {
 
     if(sem_post (&m_semMsgCount) < 0)
       {
-        NS_FATAL_ERROR("\nLteSpectrumPhy::terminateWriteThread::Error calling sem_post!");
+        NS_FATAL_ERROR("NiLogging::terminateWriteThread::Error calling sem_post!");
       }
     m_logThread->Join();
   }
@@ -302,7 +336,7 @@ namespace ns3 {
   NiLogging::WriteToFile()
   {
 
-    if (m_syncToFileInstant == 0)
+    if (!m_syncToFileInstant)
       {
         // handle buffer wrap and write to file
         for(int i = m_curLogBufferEntry;i < NI_LOG__BUFFER_SIZE; i++){
@@ -315,12 +349,6 @@ namespace ns3 {
 
     m_filePtr.close();
 
-  }
-
-  bool
-  NiLogging::IsEnable(void)
-  {
-    return m_logIsEnable;
   }
 
   // Synchronize log files instantly ...disable synchronization for better real-time behavior"
@@ -343,4 +371,3 @@ namespace ns3 {
   }
 
 } // namespace ns3
-

@@ -1,6 +1,8 @@
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2012 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
+ * Copyright (c) 2016, University of Padova, Dep. of Information Engineering, SIGNET lab
+ * Copyright (c) 2019, Universitat Politecnica de Catalunya
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Lluis Parcerisa <lparcerisa@cttc.cat>
+ *
+ * Modified by: Michele Polese <michele.polese@gmail.com>
+ *          MC Dual Connectivity functionalities
+ * Modified by: Daniel Maldonado-Hurtado <daniel.maldonado.hurtado@gmail.com>
+ *          Dual Connectivity functionalities configured for DALI
  */
 
 #include "ns3/log.h"
@@ -152,6 +159,9 @@ RrcAsn1Header::SerializeDrbToAddModList (std::list<LteRrcSap::DrbToAddMod> drbTo
 
       // Serialize logicalChannelConfig
       SerializeLogicalChannelConfig (it->logicalChannelConfig);
+
+      // Dali DC functionalities: isDc field
+      SerializeBoolean (it->isDc);
     }
 }
 
@@ -2004,6 +2014,8 @@ RrcAsn1Header::DeserializeDrbToAddModList (std::list<LteRrcSap::DrbToAddMod> *dr
         {
           bIterator = DeserializeLogicalChannelConfig (&drbToAddMod.logicalChannelConfig,bIterator);
         }
+
+      bIterator = DeserializeBoolean(&drbToAddMod.isDc,bIterator);
 
       drbToAddModList->insert (drbToAddModList->end (),drbToAddMod);
     }
@@ -3957,7 +3969,7 @@ RrcConnectionRequestHeader::PreSerialize () const
   SerializeEnum (8,m_establishmentCause);
 
   // Serialize spare : BIT STRING (SIZE (1))
-  SerializeBitstring (std::bitset<1> ());
+  SerializeBitstring (m_spare);
 
   // Finish serialization
   FinalizeSerialization ();
@@ -3966,7 +3978,7 @@ RrcConnectionRequestHeader::PreSerialize () const
 uint32_t
 RrcConnectionRequestHeader::Deserialize (Buffer::Iterator bIterator)
 {
-  std::bitset<1> dummy;
+  //std::bitset<1> dummy;
   std::bitset<0> optionalOrDefaultMask;
   int selectedOption;
 
@@ -3997,7 +4009,7 @@ RrcConnectionRequestHeader::Deserialize (Buffer::Iterator bIterator)
   bIterator = DeserializeEnum (8,&selectedOption,bIterator);
 
   // Deserialize spare
-  bIterator = DeserializeBitstring (&dummy,bIterator);
+  bIterator = DeserializeBitstring (&m_spare,bIterator);
 
   return GetSerializedSize ();
 }
@@ -4007,6 +4019,7 @@ RrcConnectionRequestHeader::SetMessage (LteRrcSap::RrcConnectionRequest msg)
 {
   m_mTmsi = std::bitset<32> ((uint32_t)msg.ueIdentity);
   m_mmec = std::bitset<8> ((uint32_t)(msg.ueIdentity >> 32));
+  m_spare = std::bitset<1> (msg.isDc);
   m_isDataSerialized = false;
 }
 
@@ -4015,7 +4028,7 @@ RrcConnectionRequestHeader::GetMessage () const
 {
   LteRrcSap::RrcConnectionRequest msg;
   msg.ueIdentity = (((uint64_t) m_mmec.to_ulong ()) << 32) | (m_mTmsi.to_ulong ());
-
+  msg.isDc = (bool) m_spare[0];
   return msg;
 }
 
@@ -4029,6 +4042,12 @@ std::bitset<32>
 RrcConnectionRequestHeader::GetMtmsi () const
 {
   return m_mTmsi;
+}
+
+std::bitset<1>
+RrcConnectionRequestHeader::GetIsDc () const
+{
+  return m_spare;
 }
 
 

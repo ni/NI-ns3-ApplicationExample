@@ -129,14 +129,40 @@ ns3.26-ni-lte-wifi-extended-optimized
 
 LWA/LWIP functionality can be configured in the corresponding main file: `ni-lte-wifi-extended.cc`.
 
+### Dual Connectivity (DC) Extension
+As an outcome of Open Call 2 for Extensions within the EU-funded research project ORCA, an extension of ns-3 for Dual Connectivity in LTE was developed.
+
+The extension can be used in simulation mode as described in the following.
+
+First, it is needed to setup the ethernet interface of your machine, e.g,, "eth0" into promiscous mode. 
+
+This is achieved by running the following command. Please adapt the interface name to your machine settings.
+
+```
+sudo ip link set eth0 promisc on
+```
+Then the extension can be started by calling the appropriate binary and passing the name of the ethernet interface name:
+
+```
+ns3.26-dali-lte-dc-experimentation-optimized --fdDeviceName="eth0"
+```
+Further information about the usage can be found [HERE](src/dali/doc/DALI_ns3_User_Guide.pdf) .
+
+A video tutorial, showcasing the functionality can be found [HERE](https://youtu.be/Ggr2q6KyQRI).
+
 ## Known Issues / Limitations
 - NI examples are currently running only if binaries are build in optimized mode
 - Transmission of packets with MTU size >=1500 bytes is not recommended because of packet fragmentation
 - Tap bridge mode works only if logging is disabled (--niApiEnableLogging="false")
 - On high CPU consumption (e.g. running experiments with high data rates) the eNB stack will drop packets (CNF_TIMEOUT) to ensure further real time processing
 - LWA/LWIP
+  - Only downlink is supported
   - Data aggregation on UE is not implemented (because NS-3 PDCP reordering is not available)
   - WIFI measurement reporting over LWA/LWIP is not implemented
+- DC
+  - RLC AM is not supported
+  - Uplink and TCP functionalities are experimental
+  - system instabilities on scenarios with high throughput (>30MBits) due to emu-fd-net-device limitations and MAC PDU assembly processing
 
 ## Additional Links
 - [NI LTE Application Framework](http://www.ni.com/de-de/shop/select/labview-communications-lte-application-framework) 

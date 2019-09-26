@@ -593,9 +593,9 @@ main (int argc, char *argv[])
 
   if (tracing == true)
     {
-      p2pHelp.EnablePcapAll ("lte_wifi_vko_p2p", apDevices.Get (0));
-      csmaHelp.EnablePcap ("lte_wifi_vko_csma", csmaDevices.Get (0), true);
-      wifiPhyHelp.EnablePcap ("lte_wifi_vko_wifi", staDevices);
+      p2pHelp.EnablePcapAll ("lte_wifi_p2p", apDevices.Get (0));
+      csmaHelp.EnablePcap ("lte_wifi_csma", csmaDevices.Get (0), true);
+      wifiPhyHelp.EnablePcap ("lte_wifi_wifi", staDevices);
     }
 
   Simulator::Run ();

@@ -31,6 +31,7 @@
 #include "ns3/ni-l1-l2-api-lte.h"
 
 namespace ns3 {
+  typedef Callback< bool, uint16_t, uint8_t, bool> NiPipeTransportTimingIndEndOkCallback;
   typedef Callback< bool, uint8_t* > NiPipeTransportDataEndOkCallback;
   typedef Callback< bool, PhyCellMeasInd > NiPipeTransportCellMeasurementEndOkCallback;
 
@@ -76,6 +77,7 @@ namespace ns3 {
     );
 
 
+    void SetNiApiTimingIndEndOkCallback (NiPipeTransportTimingIndEndOkCallback c);
     void SetNiApiDataEndOkCallback (NiPipeTransportDataEndOkCallback c);
     void SetNiApiCellMeasurementEndOkCallback (NiPipeTransportCellMeasurementEndOkCallback c);
     void SetNiApiDevType(uint8_t niApiDevType);
@@ -128,12 +130,16 @@ namespace ns3 {
     uint8_t m_tti = 0;
     uint16_t m_sfn = 0;
 
+    uint8_t m_dlTxConfigTti = 0;
+    uint16_t m_dlTxConfigSfn = 0;
+
     Ptr<SystemThread> m_timingIndThread;
     int m_timingIndThreadPriority = 0;
     bool m_timingIndThreadStop = false;
     bool m_timingIndReceived = false;
 
     Ptr<SystemThread> m_rxThread;
+    NiPipeTransportTimingIndEndOkCallback m_niApiTimingIndEndOkCallback;
     NiPipeTransportDataEndOkCallback m_niApiDataEndOkCallback;
     NiPipeTransportCellMeasurementEndOkCallback m_niApiCellMeasurementEndOkCallback;
     int m_rxThreadpriority = 0;
@@ -157,6 +163,7 @@ namespace ns3 {
     uint64_t m_numPhyUlschRxInd                = 0;
 
     std::string m_context; // context of this object e.g. "LTE"
+    bool m_ns3Running = false;
   };
 
 } //namespace ns3
