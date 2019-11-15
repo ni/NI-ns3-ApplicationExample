@@ -45,6 +45,8 @@
 #include "ns3/ni.h"
 #include "ns3/ni-l1-l2-api-lte-tables.h"
 
+#include "ns3/ni-lte-constants.h"
+
 namespace ns3
 {
   NS_LOG_COMPONENT_DEFINE ("NiLtePhyInterface");
@@ -83,6 +85,34 @@ namespace ns3
                      BooleanValue (false),
                      MakeBooleanAccessor (&NiLtePhyInterface::SetNiApiEnable),
                      MakeBooleanChecker ())
+
+// Start of 5G Attributes
+       //Sub-Carrier Spacing.
+      .AddAttribute ("niDlScs",
+                     "Desired subcarrier spacing for the downlink. 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz",
+                     UintegerValue (NIAPI_SCS_15_KHZ),
+                     MakeUintegerAccessor (&NiLtePhyInterface::SetNiDlSCSValue),
+                     MakeUintegerChecker<uint32_t> ())
+      .AddAttribute ("niUlScs",
+                     "Desired subcarrier spacing for the uplink. 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz",
+                     UintegerValue (NIAPI_SCS_15_KHZ),
+                     MakeUintegerAccessor (&NiLtePhyInterface::SetNiUlSCSValue),
+                     MakeUintegerChecker<uint32_t> ())
+      .AddAttribute ("niApiLte5gEnabled",
+                     "Enable the 5G API",
+                     BooleanValue (false),
+                     MakeBooleanAccessor (&NiLtePhyInterface::SetApiLte5gEnabled),
+                     MakeBooleanChecker ())
+      .AddAttribute ("nextScsSwitchTargetSfn",
+                     "Desired SFN to make next subcarrier spacing switch",
+                     UintegerValue (0),
+                     MakeUintegerAccessor (&NiLtePhyInterface::SetScsSwitchTargetSfn),
+                     MakeUintegerChecker<uint32_t> ())
+
+//INTRODUCE THE SFN AS AN ATTRIBUTE TO GIVE THE USER THE ABILITY TO CHANGE IT IN THE ARGUMENTS.
+
+// End of 5G Attributes
+
        ;
     return tid;
   }
@@ -114,6 +144,10 @@ namespace ns3
     m_firstPhyTimingInd(false),
     m_sfnSfOffset(0),
     m_lastTimingIndTimeUs(0),
+    m_dlscs(NIAPI_SCS_15_KHZ), //DL SCS for 5G API
+    m_ulscs(NIAPI_SCS_15_KHZ), //UL SCS for 5G API
+    m_ApiLte5Genabled(false), //5G API enabled variable
+    m_ScsSwitchTargetSfn(0),//SFN to do next SCS switch
     m_niLteSdrTimingSync(CreateObject <NiLteSdrTimingSync> ())
   {
 
@@ -464,6 +498,65 @@ namespace ns3
     return m_chSinrDb;
   }
 
+
+  // *************************** 5G Set/Get Functions.
+
+   void
+   NiLtePhyInterface::SetNiDlSCSValue (NiApiScs_t scs)
+   {
+     NI_LOG_DEBUG(this << " - Set SCS value to " << scs << "kHz");
+
+     m_dlscs  = scs;
+   }
+
+   NiApiScs_t
+   NiLtePhyInterface::GetNiDlSCS () const
+   {
+     return m_dlscs;
+   }
+
+   void
+    NiLtePhyInterface::SetNiUlSCSValue (NiApiScs_t scs)
+    {
+      NI_LOG_DEBUG(this << " - Set SCS value to " << scs << "kHz");
+
+      m_ulscs  = scs;
+    }
+
+    NiApiScs_t
+    NiLtePhyInterface::GetNiUlSCS () const
+    {
+      return m_ulscs;
+    }
+
+
+    void
+     NiLtePhyInterface::SetApiLte5gEnabled (bool fiveGenabled)
+     {
+       NI_LOG_DEBUG(this << " - Set 5G framework to " << fiveGenabled << "kHz");
+
+       m_ApiLte5Genabled = fiveGenabled;
+     }
+
+     bool
+     NiLtePhyInterface::GetApiLte5gEnabled () const
+     {
+       return m_ApiLte5Genabled;
+     }
+     void
+	 NiLtePhyInterface::SetScsSwitchTargetSfn(uint32_t ScsSwitchTargetSfn)
+     {
+       NI_LOG_DEBUG(this << " - Set SFN to switch Subcarrier Spacing to " << ScsSwitchTargetSfn);
+
+       m_ScsSwitchTargetSfn = ScsSwitchTargetSfn;
+     }
+
+     double
+     NiLtePhyInterface::GetScsSwitchTargetSfn() const
+     {
+       return m_ScsSwitchTargetSfn;
+     }
+     // *************************** End of 5G Set/Get Functions.
   uint64_t
   NiLtePhyInterface::NiSfnTtiCounterSync (uint32_t* m_nrFrames, uint32_t* m_nrSubFrames)
   {
@@ -526,7 +619,7 @@ namespace ns3
   }
 
   bool
-  NiLtePhyInterface::NiStartTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset)
+  NiLtePhyInterface::NiStartDlTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset)
   {
     // sanity checks
     if (*payloadDataBufOffset > m_tbsSize) {
@@ -538,7 +631,14 @@ namespace ns3
     if (m_enableNiApiLoopback){ // send message over udp loopback channel to rx station
         m_niUdpTransport->SendToUdpSocketTx(payloadDataBuffer, m_tbsSize);
     } else { // send message over pipe connection to lte app framework
-        // create & send an ni api downlink tx control request message
+    //Enables/disables the 5G message in the DL TX message chain
+    if(m_ApiLte5Genabled){
+    // create & send an ni api 5G downlink tx control request message
+        if (m_niPipeTransport->CreateAndSendFiveGDlTxConfigReqMsg(m_sfn, m_tti, m_dlscs) < 0){
+            NI_LOG_FATAL (this << " - DL: Could not send 5G DL Config Request Message");
+        }
+    }
+    // create & send an ni api downlink tx control request message
         if (m_niPipeTransport->CreateAndSendDlTxConfigReqMsg(m_sfn, m_tti, m_rbBitmap, m_rnti, m_mcs, m_tbsSize) < 0){
             NI_LOG_FATAL (this << " - DL: Could not send DL Config Request Message");
         }
@@ -551,6 +651,44 @@ namespace ns3
     //NiStartRxCtrlDataFrame((uint8_t*)&payloadDataBuffer);
 
   }
+
+//******************** 5G Message setting and sending functions.
+//Note: The function related to DL TX was added directly on NiLtePhyInterface::NiStartDlTxApiSend
+// as the API defined the sequence of messages as such, and it streamlined the implementation.
+bool
+   NiLtePhyInterface::NiStartDlRxApiSend ()
+   {
+  // create & send an ni api 5G downlink rx control request message
+     if (m_niPipeTransport->CreateAndSendFiveGDlRxConfigReqMsg(m_sfn, m_tti, m_dlscs) < 0){
+         NI_LOG_FATAL (this << " - DL: Could not send 5G DL Rx Config Request Message");
+     }
+   }
+
+bool
+   NiLtePhyInterface::NiStartUlTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset)
+   {
+
+      if (*payloadDataBufOffset > m_tbsSize) {
+          NI_LOG_FATAL (this << " - DL: payloadDataBufOffset > m_tbsSize");
+      }
+      // create & send an ni api 5G uplink tx control request message
+      if (m_niPipeTransport->CreateAndSendFiveGUlTxConfigReqMsg(m_sfn, m_tti, m_ulscs) < 0){
+          NI_LOG_FATAL (this << " - UL: Could not send 5G UL Tx Config Request Message");
+      }
+      if (m_niPipeTransport->CreateAndSendUlTxPayloadReqMsg(m_sfn, m_tti, payloadDataBuffer, m_tbsSize) < 0){
+          NI_LOG_FATAL ("NiLtePhyInterface::NiStartTxCtrlDataFrame: Could not send UL Payload Req Message");
+     }
+   }
+
+bool
+   NiLtePhyInterface::NiStartUlRxApiSend ()
+   {
+  // create & send an ni api 5G uplink rx control request message
+     if (m_niPipeTransport->CreateAndSendFiveGUlRxConfigReqMsg(m_sfn, m_tti, m_ulscs) < 0){
+         NI_LOG_FATAL (this << " - UL: Could not send 5G UL Rx Config Request Message");
+     }
+   }
+//******************** End of 5G Message setting and sending functions.
 
   bool
   NiLtePhyInterface::NiStartTxCtrlDataFrame (Ptr<PacketBurst> packetBurst, std::list<Ptr<LteControlMessage> > ctrlMsgList, uint32_t m_nrFrames, uint32_t m_nrSubFrames)
@@ -601,7 +739,7 @@ namespace ns3
             // check if rnti specific data were included
             if (rntiMap.empty()){
                 // if not then use default dci
-                m_rbBitmap = 63; // 5 RBGs
+                m_rbBitmap = 255; // 6 RBGs --> For GFDM change to 255 = 8PRBs
                 m_rnti     = 1;
                 m_mcs      = 5;
                 GetTbs(m_mcs, m_rbBitmap, &m_tbsSize);
@@ -625,7 +763,7 @@ namespace ns3
                 std::memcpy(payloadDataBuffer, (uint8_t*)&niApiPacketHeader, sizeof(niApiPacketHeader));
 
                 // send mac pdu with broadcast information to all ue's
-                NiStartTxApiSend ((uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
+                NiStartDlTxApiSend ((uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
 
             } else {
                 // loop over all ue's to find corresponding control and payload messages
@@ -659,7 +797,7 @@ namespace ns3
                     std::memcpy(payloadDataBuffer, (uint8_t*)&niApiPacketHeader, sizeof(niApiPacketHeader));
 
                     // send mac pdu via ni api to specific ue
-                    NiStartTxApiSend ((uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
+                    NiStartDlTxApiSend ((uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
 
                   } // end rnti/ue loop
             }
@@ -716,11 +854,20 @@ namespace ns3
             // chose api transport layer
             if (m_enableNiApiLoopback){ // send message over udp loopback channel to rx station
                 m_niUdpTransport->SendToUdpSocketTx((uint8_t*)&payloadDataBuffer, payloadDataBufOffset);
-            } else { // send message over pipe connection to lte app framework
-                // create & send an ni api uplink tx payload request message
-                if (m_niPipeTransport->CreateAndSendUlTxPayloadReqMsg(m_sfn, m_tti, (uint8_t*)&payloadDataBuffer, payloadDataBufOffset) < 0){
-                    NI_LOG_FATAL ("NiLtePhyInterface::NiStartTxCtrlDataFrame: Could not send UL Payload Req Message");
-                }
+            }
+            else { // send message over pipe connection to lte app framework
+              // create & send an ni api uplink tx payload request message
+                //NiStartUlTxApiSend ((uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
+
+            //enables/disables the 5G message in the UL TX chain.
+            if(m_ApiLte5Genabled){
+              if (m_niPipeTransport->CreateAndSendFiveGUlTxConfigReqMsg(m_sfn, m_tti, m_ulscs) < 0){
+                 NI_LOG_FATAL (this << " - UL: Could not send 5G  UL Tx Config Request Message");
+               }
+            }
+              if (m_niPipeTransport->CreateAndSendUlTxPayloadReqMsg(m_sfn, m_tti, (uint8_t*)&payloadDataBuffer, payloadDataBufOffset) < 0){
+                NI_LOG_FATAL ("NiLtePhyInterface::NiStartTxCtrlDataFrame: Could not send UL Payload Req Message");
+               }
             }
         }
         // call rx function directly - useful for debugging
@@ -1859,7 +2006,7 @@ namespace ns3
     const int errorTtiDuration   = 666; // defaultTtiTiming*2/3
     const int warningTtiDuration = 333; // defaultTtiTiming*1/3
 
-    NI_LOG_DEBUG (this << ", Start subframe " << nrFrames << "." << nrSubFrames);
+  NI_LOG_DEBUG("NiLtePhyInterface::NiStartSubframe, " << nrFrames << "." << nrSubFrames);
 
     if (defaultTtiDuration != (uint32_t) ns3TtiTimingUs)
       {
@@ -1924,6 +2071,39 @@ namespace ns3
 
     // store value for evaluation in next iteration
     m_lastTimingIndTimeUs = timingIndTimeUs;
+
+    // Handle 5G API Rx configuration
+    if(m_ApiLte5Genabled){
+        if (m_firstPhyTimingInd){ 
+          // Condition to send initial Rx message for UE.
+          if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE)){
+              NiStartDlRxApiSend();
+          }
+          //Condition to only initial RX configuration for eNB.
+          else if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
+              NiStartUlRxApiSend();
+          }
+        }
+      //Change value of the SCS in mid operation. Can add more to make more changes.
+      //NI_LTE_5G_CONST_MAX_NUM_SCS_CFG
+      // m_ScsSwitchTargetSfn
+      if (nrFrames==m_ScsSwitchTargetSfn && nrSubFrames==1){
+        NiApiScs_t oldDlScs = m_dlscs;
+        NiApiScs_t oldUlScs = m_ulscs;
+        m_dlscs = (NiApiScs_t)(((uint32_t) m_dlscs+1) % NI_LTE_5G_CONST_MAX_NUM_SCS_CFG);
+        m_ulscs = (NiApiScs_t)(((uint32_t) m_ulscs+1) % NI_LTE_5G_CONST_MAX_NUM_SCS_CFG);
+        NI_LOG_CONSOLE_INFO ("5G SCS Configuration for DL changed from " << oldDlScs << " to " << m_dlscs);
+        NI_LOG_CONSOLE_INFO ("5G SCS Configuration for UL changed from " << oldUlScs << " to " << m_ulscs);
+        if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE)){
+          NiStartDlRxApiSend();
+        }
+        else if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
+          NiStartUlRxApiSend();
+        }
+      }
+      //Additional cases need to be implemented here as additional if cases.
+    }
+    //End of SCS Changing functions.
 
     UpdateNiChannelSinrValueFromRemoteControl();
   }

@@ -204,14 +204,15 @@ NiUdpClient::Send (void)
   if ((m_socket->Send (pktSend)) >= 0)
     {
       ++m_sent;
-      NI_LOG_CONSOLE_DEBUG ("NI.CLIENT: sent " << m_size
+      NI_LOG_CONSOLE_DEBUG ("NI.CLIENT: sent " << pktSend->GetSize()
                             << " bytes to " << peerAddressStringStream.str ()
+                            << ":" << m_peerPort
                             << " Uid: " << pktSend->GetUid ()
                             << " Sequence number: " << seqTs.GetSeq ());
     }
   else
     {
-      NI_LOG_CONSOLE_DEBUG ("Error while sending " << m_size << " bytes to "
+      NI_LOG_CONSOLE_DEBUG ("Error while sending " << pktSend->GetSize() << " bytes to "
                    << peerAddressStringStream.str ());
     }
 

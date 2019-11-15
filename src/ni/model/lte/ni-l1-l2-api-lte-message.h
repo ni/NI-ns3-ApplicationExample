@@ -55,6 +55,12 @@ namespace ns3 {
   int32_t InitializePhyDlTxPayloadReq( PhyDlTxPayloadReq* p_phyDlTxPayloadReq );
   int32_t InitializePhyUlTxPayloadReq( PhyUlTxPayloadReq* p_phyUlTxPayloadReq );
 
+  ///////////// 5G Messages ////////////
+  int32_t InitializePhy5GDlTxConfigReq( Phy5GDlTxConfigReq* p_phy5GDlTxConfigReq );
+  int32_t InitializePhy5GDlRxConfigReq( Phy5GDlRxConfigReq* p_phy5GDlRxConfigReq );
+  int32_t InitializePhy5GUlTxConfigReq( Phy5GUlTxConfigReq* p_phy5GUlTxConfigReq );
+  int32_t InitializePhy5GUlRxConfigReq( Phy5GUlRxConfigReq* p_phy5GUlRxConfigReq );
+
 //=============================================================================================================================
 //=============================================================================================================================
 } //namespace ns3

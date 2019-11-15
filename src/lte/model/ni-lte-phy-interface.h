@@ -60,6 +60,14 @@ namespace ns3
     NIAPI_UNDEF_PACKET = 2, //undefined packet type
   } NiApiPacketType_t ;
 
+  // packet identifier
+  typedef enum {
+    NIAPI_SCS_15_KHZ   = 0,
+    NIAPI_SCS_30_KHZ   = 1,
+    NIAPI_SCS_60_KHZ   = 2,
+    NIAPI_SCS_120_KHZ  = 3,
+  } NiApiScs_t ;
+
   typedef Callback< void, uint16_t, uint8_t, bool > NiPhyTimingIndEndOkCallback;
   typedef Callback< void, Ptr<Packet> > NiPhyRxDataEndOkCallback;
   typedef Callback< void, std::list<Ptr<LteControlMessage> > > NiPhyRxCtrlEndOkCallback;
@@ -162,6 +170,22 @@ namespace ns3
     void SetNiChannelSinrValue (double chSinrDb);
     void UpdateNiChannelSinrValueFromRemoteControl(void);
 
+    //5G Set Functions
+     void SetNiDlSCSValue (NiApiScs_t dlscs);
+     void SetNiUlSCSValue (NiApiScs_t ulscs);
+     void SetApiLte5gEnabled (bool fiveGenabled);
+     void SetScsSwitchTargetSfn (uint32_t ScsSwitchTargetSfn);
+     //End of 5G Get Functions
+
+ //*****************************************************
+
+     //5G Get Functions
+     NiApiScs_t GetNiDlSCS () const;
+     NiApiScs_t GetNiUlSCS () const;
+     bool GetApiLte5gEnabled () const;
+     double GetScsSwitchTargetSfn() const;
+     //End of the 5G Get Functions
+
     uint64_t NiSfnTtiCounterSync(uint32_t* m_nrFrames, uint32_t* m_nrSubFrames);
 
     bool NiStartTxCtrlDataFrame (Ptr<PacketBurst> packetBurst, std::list<Ptr<LteControlMessage> > ctrlMsgList, uint32_t m_nrFrames, uint32_t m_nrSubFrames);
@@ -188,7 +212,13 @@ namespace ns3
     bool NiStartTxDlCtrlFrameUc (Ptr<PacketBurst> packetBurst, std::list<Ptr<LteControlMessage> > ctrlMsgList, uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset, uint32_t &controlMessageCnt, uint16_t curRnti);
     bool NiStartTxUlCtrlFrame (Ptr<PacketBurst> packetBurst, std::list<Ptr<LteControlMessage> > ctrlMsgList, uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset, uint32_t &controlMessageCnt);
     bool NiStartTxDataFrame (Ptr<PacketBurst> packetBurst, uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset, uint32_t curRnti);
-    bool NiStartTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset);
+    bool NiStartDlTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset);
+
+// ******************* 5G functions added here ************
+    bool NiStartDlRxApiSend ();
+    bool NiStartUlRxApiSend ();
+    bool NiStartUlTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset);
+// ******************* End of 5G functions here ***********
 
     bool NiStartRxCtrlDataFrame (uint8_t* payloadDataBuffer);
     bool NiStartRxCellMeasurementIndHandler (PhyCellMeasInd phyCellMeasInd);
@@ -234,6 +264,13 @@ namespace ns3
     uint32_t m_mcs;
     uint32_t m_tbsSize;
     bool     m_firstPhyTimingInd;
+
+    //added for 5G messages
+    NiApiScs_t m_dlscs;
+    NiApiScs_t m_ulscs;
+    bool m_ApiLte5Genabled;
+    uint32_t m_ScsSwitchTargetSfn;
+    //end of 5G variables
 
     double   m_chSinrDb;
     double   m_chSinrLin;

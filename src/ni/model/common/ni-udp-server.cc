@@ -159,26 +159,29 @@ NiUdpServer::HandleRead (Ptr<Socket> socket)
   Address from;
   while ((packet = socket->RecvFrom (from)))
     {
-      if (packet->GetSize () > 0)
+      uint32_t packetSize = packet->GetSize ();
+      if (packetSize > 0)
         {
           SeqTsHeader seqTs;
           packet->RemoveHeader (seqTs);
           uint32_t currentSequenceNumber = seqTs.GetSeq ();
           if (InetSocketAddress::IsMatchingType (from))
             {
-              NI_LOG_CONSOLE_DEBUG ("NI.SERVER: received " << packet->GetSize ()
+              NI_LOG_CONSOLE_DEBUG ("NI.SERVER: received " << packetSize
                              << " bytes from " << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
+                             << ":" << InetSocketAddress::ConvertFrom (from).GetPort ()
                              << " Uid: " << packet->GetUid ()
                              << " Sequence Number: " << currentSequenceNumber);
             }
           else if (Inet6SocketAddress::IsMatchingType (from))
             {
-              NI_LOG_CONSOLE_DEBUG ("NI.SERVER: received " << packet->GetSize ()
+              NI_LOG_CONSOLE_DEBUG ("NI.SERVER: received " << packetSize
                            << " bytes from " << Inet6SocketAddress::ConvertFrom (from).GetIpv6 ()
-                           << " port " << Inet6SocketAddress::ConvertFrom (from).GetPort ()
+                           << ":" << Inet6SocketAddress::ConvertFrom (from).GetPort ()
+                           << " Uid: " << packet->GetUid ()
                            << " Sequence Number: " << currentSequenceNumber);
-              NI_LOG_DEBUG("NI.SERVER: received packet with Sequence Number:" << currentSequenceNumber << "at time: " << NiUtils::GetSysTime());
             }
+          NI_LOG_DEBUG("NI.SERVER: received packet with Sequence Number:" << currentSequenceNumber << "at time: " << NiUtils::GetSysTime());
 
           m_lossCounter.NotifyReceived (currentSequenceNumber);
           m_received++;

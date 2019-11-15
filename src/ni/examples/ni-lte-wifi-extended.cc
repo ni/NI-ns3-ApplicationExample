@@ -272,8 +272,12 @@ int main (int argc, char *argv[]){
   uint32_t packetNum      = 5;
   // Packet sizes for ns-3 generated packets
   uint32_t packetSize     = 1000;
+
   // define client server configuration
-  int cientServerConfig   = 1;
+  // 1 = server running on a LAN node in same network
+  // 2 = UE Terminal Node, server running on LTE UE NetDevice
+  // 3 = UE Terminal Node, server running on WIFI NetDevice
+  int cientServerConfig = 2;
 
   // ========================
   // general NI API parameter
@@ -314,22 +318,20 @@ int main (int argc, char *argv[]){
   bool niApiWifiLoopbackEnabled   = false;
   // Enable printing out sent/received packet content
   bool niApiWifiEnablePrintMsgContent = false;
-  // IP address & Port of ns-3 Wifi MAC API on which packets are sent to PHY (e.g. PXI device)
+  // IP address & Port of ns-3 Wifi MAC API on which packets are sent to NI 802.11 Application Framework PHY (e.g. PXI device)
   std::string niApiWifiSta1RemoteIpAddrTx("127.0.0.1");           // remote address to be used for TX socket opening
-  std::string niApiWifiSta1RemotePortTx("12701");                 // remote port to be used for TX socket opening
-  std::string niApiWifiSta1LocalPortRx("12702");                  // local port to be used for RX socket opening
-  // IP address & Port of ns-3 Wifi MAC API on which packets are received from PHY (e.g. PXI device)
+  std::string niApiWifiSta1RemotePortTx("12101");                 // remote port to be used for TX socket opening
+  std::string niApiWifiSta1LocalPortRx("12701");                  // local port to be used for RX socket opening
+  // IP address & Port of ns-3 Wifi MAC API on which packets are received from NI 802.11 Application Framework PHY (e.g. PXI device)
   std::string niApiWifiSta2RemoteIpAddrTx("127.0.0.1");           // remote address to be used for TX socket opening
-  std::string niApiWifiSta2RemotePortTx("12702");                 // remote port to be used for TX socket opening
-  std::string niApiWifiSta2LocalPortRx("12701");                  // local port to be used for RX socket opening
+  std::string niApiWifiSta2RemotePortTx("12102");                 // remote port to be used for TX socket opening
+  std::string niApiWifiSta2LocalPortRx("12702");                  // local port to be used for RX socket opening
   // MAC address configurations for 802.11 AFW
   std::string niApiWifiSta1MacAddr("46:6F:4B:75:6D:61");
   std::string niApiWifiSta2MacAddr("46:6F:4B:75:6D:62");
   std::string niApiWifiBssidMacAddr("46:6F:4B:75:6D:61");
   // MCS used by 802.11 AFW
   uint32_t niApiWifiMcs(5);
-  //
-  std::string phyMode ("DsssRate1Mbps");
   //
   double rss = -80; // -dBm
   //
@@ -360,7 +362,7 @@ int main (int argc, char *argv[]){
   cmd.AddValue("interval", "interval (milliseconds) between packets", packetInterval);
   cmd.AddValue("simTime", "Duration in seconds which the simulation should run", simTime);
   cmd.AddValue("transmTime", "Time in seconds when the packet transmission should be scheduled", transmTime);
-  cmd.AddValue("cientServerConfig", "Client Server Configuration", cientServerConfig);
+  cmd.AddValue("cientServerConfig", "Client Server Configuration (Server on 1=LAN Node, 2=UE Node LTE, 3=UE Node WIFI)", cientServerConfig);
   cmd.AddValue("niApiEnableTapBridge", "Enable/disable TapBridge as external data source/sink", niApiEnableTapBridge);
   cmd.AddValue("niRemoteControlEnable", "Enable/disable Remote Control engine", niRemoteControlEnable);
   cmd.AddValue("niApiEnableLogging", "Set whether to enable NIAPI_DebugLogs", niApiEnableLogging);
@@ -421,19 +423,12 @@ int main (int argc, char *argv[]){
   // check and apply 802.11 API settings
   if (niApiWifiSta1RemoteIpAddrTxTmp.empty() || niApiWifiSta1RemotePortTxTmp.empty() || niApiWifiSta1LocalPortRxTmp.empty())
     {
-      // API settings where empty or incomplete, assign defaults
-      niApiWifiSta1RemoteIpAddrTx = "127.0.0.1";
       if (niApiWifiLoopbackEnabled)
         {
-          // apply default settings for local loopback
+          std::cout << "INFO: 802.11 API UDP loop back settings where empty or incomplete, use defaults" << std::endl;
+          // apply default settings for local loop back
           niApiWifiSta1RemotePortTx = "12701";
           niApiWifiSta1LocalPortRx = "12702";
-        }
-      else
-        {
-          // apply settings for connection with SDR / NI 802.11 Application Framework
-          niApiWifiSta1RemotePortTx = "12101";
-          niApiWifiSta1LocalPortRx = "12701";
         }
     }
     else
@@ -445,19 +440,12 @@ int main (int argc, char *argv[]){
       }
     if (niApiWifiSta2RemoteIpAddrTxTmp.empty() || niApiWifiSta2RemotePortTxTmp.empty() || niApiWifiSta2LocalPortRxTmp.empty())
       {
-        // API settings where empty or incomplete, assign defaults
-        niApiWifiSta2RemoteIpAddrTx = "127.0.0.1";
         if (niApiWifiLoopbackEnabled)
           {
-            // apply default settings for local loopback
+            std::cout << "INFO: 802.11 API UDP loop back settings where empty or incomplete, use defaults" << std::endl;
+            // apply default settings for local loop back
             niApiWifiSta2RemotePortTx = "12702";
             niApiWifiSta2LocalPortRx = "12701";
-          }
-        else
-          {
-            // apply settings for connection with SDR / NI 802.11 Application Framework
-            niApiWifiSta2RemotePortTx = "12102";
-            niApiWifiSta2LocalPortRx = "12702";
           }
       }
       else
@@ -569,10 +557,8 @@ int main (int argc, char *argv[]){
   Ssid       ssid = Ssid ("wifi-default");
 
   WifiHelper wifiHelp;
-             wifiHelp.SetStandard (WIFI_PHY_STANDARD_80211b); // WIFI_PHY_STANDARD_80211ac does not work correctly - no assoc req/resp
-             wifiHelp.SetRemoteStationManager ("ns3::ConstantRateWifiManager",
-                                    "DataMode", StringValue (phyMode),
-                                    "ControlMode", StringValue (phyMode));
+             wifiHelp.SetStandard (WIFI_PHY_STANDARD_80211ac);
+             wifiHelp.SetRemoteStationManager ("ns3::ConstantRateWifiManager");
   //if (verbose) wifiHelp.EnableLogComponents ();  // Turn on all Wifi logging
 
   NqosWifiMacHelper wifiApMacHelp, wifiStaMacHelp = NqosWifiMacHelper::Default(); // mac with disabled rate control
@@ -583,8 +569,6 @@ int main (int argc, char *argv[]){
   Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue ("2200"));
   // turn off RTS/CTS for frames below 2200 bytes
   Config::SetDefault ("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue ("2200"));
-  // Fix non-unicast data rate to be the same as that of unicast
-  Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode", StringValue (phyMode));
 
   // NI Wifi API Configuration
   Config::SetDefault ("ns3::NiWifiMacInterface::niApiDevType", StringValue ( niApiWifiDevMode.c_str()));

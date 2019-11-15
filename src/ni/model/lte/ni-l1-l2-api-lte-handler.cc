@@ -180,12 +180,95 @@ static int32_t SerializeParameterSet(
 
     }
 
+//************ 5G Message Cases
+    case (PHY_5G_DL_TX_CONFIG_REQ):
+        {
+
+          switch ( subMsgType )
+          {
+            case (FiveG_TX_CONFIG):
+            {
+              num_el       = FiveGTxConfigBodySpec.numEl;
+              p_byte_width = (uint8_t*) &(FiveGTxConfigBodySpec.byteWidth);
+              break;
+            }
+            default:
+            {
+              break;
+            }
+          }
+          break;
+
+        }
+
+    case (PHY_5G_UL_TX_CONFIG_REQ):
+            {
+
+              switch ( subMsgType )
+              {
+                case (FiveG_TX_CONFIG):
+                {
+                  num_el       = FiveGTxConfigBodySpec.numEl;
+                  p_byte_width = (uint8_t*) &(FiveGTxConfigBodySpec.byteWidth);
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+              }
+              break;
+
+            }
+
+    case (PHY_5G_DL_RX_CONFIG_REQ):
+            {
+
+              switch ( subMsgType )
+              {
+                case (FiveG_TX_CONFIG):
+                {
+                  num_el       = FiveGTxConfigBodySpec.numEl;
+                  p_byte_width = (uint8_t*) &(FiveGTxConfigBodySpec.byteWidth);
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+              }
+              break;
+
+            }
+
+    case (PHY_5G_UL_RX_CONFIG_REQ):
+                {
+
+                  switch ( subMsgType )
+                  {
+                    case (FiveG_TX_CONFIG):
+                    {
+                      num_el       = FiveGTxConfigBodySpec.numEl;
+                      p_byte_width = (uint8_t*) &(FiveGTxConfigBodySpec.byteWidth);
+                      break;
+                    }
+                    default:
+                    {
+                      break;
+                    }
+                  }
+                  break;
+
+                }
+
     default:
     {
       break;
     }
 
   }
+
+  //************ End of 5G Message Cases
 
   // Serialize parameter set header
   SerializeStruct(
@@ -479,6 +562,130 @@ int32_t SerializePhyDlTxConfigReq(
 }
 //======================================================================================
 //======================================================================================
+
+
+//*********************** Begin of 5G Messages ***********************
+
+int32_t SerializePhyFiveGDlTxConfigReq(
+  Phy5GDlTxConfigReq* p_phy5GDlTxConfigReq,
+  uint8_t*  p_buffer,
+  uint32_t* p_bufferOffset
+)
+//======================================================================================
+{
+
+  SerializeMessageHeader(
+    &(p_phy5GDlTxConfigReq->genMsgHdr),
+    &(p_phy5GDlTxConfigReq->subMsgHdr),
+    p_buffer,
+    p_bufferOffset
+  );
+
+  SerializeParameterSet(
+    PHY_5G_DL_TX_CONFIG_REQ,
+    FiveG_TX_CONFIG,
+    &(p_phy5GDlTxConfigReq->FiveGDlTxConfigHdr),
+    (uint32_t*) &(p_phy5GDlTxConfigReq->FiveGDlTxConfigBody),
+    p_buffer,
+    p_bufferOffset
+  );
+
+  return 0;
+}
+//======================================================================================
+//======================================================================================
+
+
+int32_t SerializePhyFiveGDlRxConfigReq(
+  Phy5GDlRxConfigReq* p_phy5GDlRxConfigReq,
+  uint8_t*  p_buffer,
+  uint32_t* p_bufferOffset
+)
+//======================================================================================
+{
+
+  SerializeMessageHeader(
+    &(p_phy5GDlRxConfigReq->genMsgHdr),
+    &(p_phy5GDlRxConfigReq->subMsgHdr),
+    p_buffer,
+    p_bufferOffset
+  );
+
+  SerializeParameterSet(
+    PHY_5G_DL_RX_CONFIG_REQ,
+    FiveG_TX_CONFIG,
+    &(p_phy5GDlRxConfigReq->FiveGDlRxConfigHdr),
+    (uint32_t*) &(p_phy5GDlRxConfigReq->FiveGDlRxConfigBody),
+    p_buffer,
+    p_bufferOffset
+  );
+
+  return 0;
+}
+//======================================================================================
+//======================================================================================
+
+
+int32_t SerializePhyFiveGUlTxConfigReq(
+  Phy5GUlTxConfigReq* p_phy5GUlTxConfigReq,
+  uint8_t*  p_buffer,
+  uint32_t* p_bufferOffset
+)
+//======================================================================================
+{
+
+  SerializeMessageHeader(
+    &(p_phy5GUlTxConfigReq->genMsgHdr),
+    &(p_phy5GUlTxConfigReq->subMsgHdr),
+    p_buffer,
+    p_bufferOffset
+  );
+
+  SerializeParameterSet(
+    PHY_5G_DL_RX_CONFIG_REQ,
+    FiveG_TX_CONFIG,
+    &(p_phy5GUlTxConfigReq->FiveGUlTxConfigHdr),
+    (uint32_t*) &(p_phy5GUlTxConfigReq->FiveGUlTxConfigBody),
+    p_buffer,
+    p_bufferOffset
+  );
+
+  return 0;
+}
+//======================================================================================
+//======================================================================================
+
+
+int32_t SerializePhyFiveGUlRxConfigReq(
+  Phy5GUlRxConfigReq* p_phy5GUlRxConfigReq,
+  uint8_t*  p_buffer,
+  uint32_t* p_bufferOffset
+)
+//======================================================================================
+{
+
+  SerializeMessageHeader(
+    &(p_phy5GUlRxConfigReq->genMsgHdr),
+    &(p_phy5GUlRxConfigReq->subMsgHdr),
+    p_buffer,
+    p_bufferOffset
+  );
+
+  SerializeParameterSet(
+    PHY_5G_DL_RX_CONFIG_REQ,
+    FiveG_TX_CONFIG,
+    &(p_phy5GUlRxConfigReq->FiveGUlRxConfigHdr),
+    (uint32_t*) &(p_phy5GUlRxConfigReq->FiveGUlRxConfigBody),
+    p_buffer,
+    p_bufferOffset
+  );
+
+  return 0;
+}
+//======================================================================================
+//======================================================================================
+
+//*********************** End of 5G Messages ***********************
 
 
 

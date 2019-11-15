@@ -87,6 +87,13 @@ main (int argc, char *argv[])
    // number of station nodes in infrastructure mode
    uint32_t nLteUeNodes = 1;
 
+   // 5G DL subccarrier spacing. 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz
+   uint32_t dlscs = 0;
+   // 5G UL subccarrier spacing
+   uint32_t ulscs = 0;
+   //SFN to make a change in the SCS value used.
+   uint32_t ScsSwitchTargetSfn=0;
+
    // ========================
    // general NI API parameter
 
@@ -108,10 +115,12 @@ main (int argc, char *argv[])
   std::string niApiLteDevMode = "NIAPI_ALL";
   // Activate NIAPI for LTE
   bool niApiLteEnabled = false;
+  // Activate additional NI API Messages for 5G
+  bool niApiLte5gEnabled = false;
   // Activate NIAPI loopback mode for LTE
   bool niApiLteLoopbackEnabled = false; // true UDP, false Pipes
   // sinr value in db used for cqi calculation for the ni phy
-  double niChSinrValueDb = 10;
+  double niChSinrValueDb = 30; //10=MCS 12, 30=MCS 28
 
   // Command line arguments
   CommandLine cmd;
@@ -124,7 +133,11 @@ main (int argc, char *argv[])
   cmd.AddValue("niApiEnableLogging", "Set whether to enable NIAPI_DebugLogs", niApiEnableLogging);
   cmd.AddValue("niApiDevMode", "Set whether the simulation should run as BS or Terminal", niApiDevMode);
   cmd.AddValue("niApiLteEnabled", "Enable NI API for LTE", niApiLteEnabled);
+  cmd.AddValue("niApiLte5gEnabled", "Enable additional NI API Messages for 5G", niApiLte5gEnabled);
   cmd.AddValue("niApiLteLoopbackEnabled", "Enable/disable UDP loopback mode for LTE NI API", niApiLteLoopbackEnabled);
+  cmd.AddValue("setDlScs", "Set initial value for the DL Subcarrier Spacing (SCS). 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz", dlscs);
+  cmd.AddValue("setUlScs", "Set initial value for the UL Subcarrier Spacing (SCS). 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz", ulscs);
+  cmd.AddValue("nextScsSwitchTargetSfn", "Set next SFN to switch the value ",ScsSwitchTargetSfn);
   cmd.Parse(argc, argv);
 
   // Activate the ns-3 real time simulator
@@ -168,6 +181,10 @@ main (int argc, char *argv[])
   std::cout << "LTE API:              ";
   if (niApiLteEnabled == true) std::cout << "enabled" << std::endl;
   else                         std::cout << "disabled" << std::endl;
+
+  std::cout << "5G API extensions:    ";
+  if (niApiLte5gEnabled == true) std::cout << "enabled" << std::endl;
+  else                           std::cout << "disabled" << std::endl;
 
   std::cout << "LTE UDP Loopback:     ";
   if (niApiLteLoopbackEnabled == true) std::cout << "enabled" << std::endl;
@@ -280,21 +297,41 @@ main (int argc, char *argv[])
    Config::SetDefault ("ns3::NiLtePhyInterface::niChSinrValueDb", DoubleValue (niChSinrValueDb));
    // Set the CQI report period for the ni phy
    Config::SetDefault ("ns3::NiLtePhyInterface::niCqiReportPeriodMs", UintegerValue (100));
+   // Enable/ disable the 5G API
+   Config::SetDefault ("ns3::NiLtePhyInterface::niApiLte5gEnabled",BooleanValue(niApiLte5gEnabled));
+   // Use simple round robin scheduler here (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
+   std::string LteMacSchedulerType = "ns3::RrFfMacScheduler";
 
+
+   //Enables the SCS configuration and the GFDM Complaint Round Robin MAC Scheduler only if both
+   //are true, meaning that GFDM transmission is desired.
+   if (niApiLteEnabled && niApiLte5gEnabled)
+     {
+       //************** 5G values set up.
+       //Set the DL SCS for the ni Phy.
+       Config::SetDefault ("ns3::NiLtePhyInterface::niDlScs", UintegerValue (dlscs));
+       //Set the UL SCS for the ni Phy.
+       Config::SetDefault ("ns3::NiLtePhyInterface::niUlScs", UintegerValue (ulscs));
+       // Use simple round robin scheduler with GFDM specific PRB allocation patterns
+       LteMacSchedulerType = "ns3::NiGfdmRrFfMacScheduler";
+       //Set the SFN to perform SCS change.
+       Config::SetDefault ("ns3::NiLtePhyInterface::nextScsSwitchTargetSfn" , UintegerValue(ScsSwitchTargetSfn));
+       //************** 5G values end.
+     }
    // Set downlink transmission bandwidth in number of resource blocks -> set to 20MHz default here
    Config::SetDefault ("ns3::LteEnbNetDevice::DlBandwidth", UintegerValue (100));
    // Disable ideal and use real RRC protocol with RRC PDUs (cf https://www.nsnam.org/docs/models/html/lte-design.html#real-rrc-protocol-model)
    Config::SetDefault ("ns3::LteHelper::UseIdealRrc", BooleanValue (false));
    // Disable CQI measurement reports based on PDSCH (based on ns-3 interference model)
    Config::SetDefault ("ns3::LteHelper::UsePdschForCqiGeneration", BooleanValue (false));
-   // Use simple round robin scheduler here (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
-   Config::SetDefault ("ns3::LteHelper::Scheduler", StringValue ("ns3::RrFfMacScheduler"));
    // Set the adpative coding and modulation model to Piro as this is the simpler one
    Config::SetDefault ("ns3::LteAmc::AmcModel", EnumValue (LteAmc::PiroEW2010));
+   // Use simple round robin scheduler; for GFDM with specific PRB allocation patterns
+   Config::SetDefault ("ns3::LteHelper::Scheduler", StringValue (LteMacSchedulerType));
    // Disable HARQ as this not support by PHY and not implemented in NI API
-   Config::SetDefault ("ns3::RrFfMacScheduler::HarqEnabled", BooleanValue (false));
+   Config::SetDefault (LteMacSchedulerType + "::HarqEnabled", BooleanValue (false));
    // Set CQI timer threshold in sec - depends on CQI report frequency to be set in NiLtePhyInterface
-   Config::SetDefault ("ns3::RrFfMacScheduler::CqiTimerThreshold", UintegerValue (1000));
+   Config::SetDefault (LteMacSchedulerType + "::CqiTimerThreshold", UintegerValue (1000));
    // Set the length of the window (in TTIs) for the reception of the random access response (RAR); the resulting RAR timeout is this value + 3 ms
    Config::SetDefault ("ns3::LteEnbMac::RaResponseWindowSize", UintegerValue(10));
    // Set ConnectionTimeoutDuration, after a RA attempt, if no RRC Connection Request is received before this time, the UE context is destroyed.
@@ -312,8 +349,7 @@ main (int argc, char *argv[])
    lteHelper->SetEpcHelper (epcHelper);
 
    // Use simple round robin scheduler here
-   // (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
-   lteHelper->SetSchedulerType ("ns3::RrFfMacScheduler");
+   lteHelper->SetSchedulerType (LteMacSchedulerType);
 
    Ptr<Node> PacketGwNode = epcHelper->GetPgwNode ();
    // create lte p2p link to mobile network gateway - work around for the global/static routing problem

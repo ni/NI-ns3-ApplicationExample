@@ -76,6 +76,33 @@ namespace ns3 {
         uint32_t tbsSize
     );
 
+    ////////////// 5G Messages //////////////
+
+        int32_t CreateAndSendFiveGDlTxConfigReqMsg(
+                uint32_t sfn,
+                uint32_t tti,
+                uint32_t scs
+            );
+
+
+        int32_t CreateAndSendFiveGDlRxConfigReqMsg(
+                uint32_t sfn,
+                uint32_t tti,
+                uint32_t scs
+            );
+
+        int32_t CreateAndSendFiveGUlTxConfigReqMsg(
+                uint32_t sfn,
+                uint32_t tti,
+                uint32_t scs
+            );
+
+        int32_t CreateAndSendFiveGUlRxConfigReqMsg(
+                uint32_t sfn,
+                uint32_t tti,
+                uint32_t scs
+            );
+    ////////////// End of 5G Messages //////////////
 
     void SetNiApiTimingIndEndOkCallback (NiPipeTransportTimingIndEndOkCallback c);
     void SetNiApiDataEndOkCallback (NiPipeTransportDataEndOkCallback c);
@@ -161,6 +188,12 @@ namespace ns3 {
     uint64_t m_numPhyDlschRxInd                = 0;
     uint64_t m_numPhyCellMeasInd               = 0;
     uint64_t m_numPhyUlschRxInd                = 0;
+    uint32_t m_numCrcFails                     = 0;
+    // 5G related statistical variables.
+    uint64_t m_numFiveGPhyDlTxConfigReq        = 0;
+    uint64_t m_numFiveGPhyDlRxConfigReq        = 0;
+    uint64_t m_numFiveGPhyUlTxConfigReq        = 0;
+    uint64_t m_numFiveGPhyUlRxConfigReq        = 0;
 
     std::string m_context; // context of this object e.g. "LTE"
     bool m_ns3Running = false;

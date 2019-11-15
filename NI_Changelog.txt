@@ -1,6 +1,15 @@
 Changelog - NI ns3 Application Example
 
 ======================
+v2.1.0        15.11.19
+======================
+
+- FEATURE: added WIFI_PHY_STANDARD_80211ac support
+- FEATURE: added 5G API extensions for flexible SCS configuration
+- FEATURE: added new scheduler model which supports 5G GFDM PHY 
+- CHANGE: simplified API default IP/PORT assignment for WIFI
+
+======================
 v2.0.0        26.09.19
 ======================
 

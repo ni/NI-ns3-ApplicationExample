@@ -111,8 +111,6 @@ int main (int argc, char *argv[])
   // MCS used by 802.11 AFW
   uint32_t niApiWifiMcs(5);
   //
-  std::string phyMode ("DsssRate1Mbps");
-  //
   double rss = -80; // -dBm
   //
   std::string phyRate = "VhtMcs8";        // PHY bitrate
@@ -271,10 +269,8 @@ int main (int argc, char *argv[])
   Ssid       ssid = Ssid ("wifi-default");
 
   WifiHelper wifiHelp;
-             wifiHelp.SetStandard (WIFI_PHY_STANDARD_80211b); // WIFI_PHY_STANDARD_80211ac does not work correctly - no assoc req/resp
-             wifiHelp.SetRemoteStationManager ("ns3::ConstantRateWifiManager",
-                                               "DataMode", StringValue (phyMode),
-                                               "ControlMode", StringValue (phyMode));
+             wifiHelp.SetStandard (WIFI_PHY_STANDARD_80211ac);
+             wifiHelp.SetRemoteStationManager ("ns3::ConstantRateWifiManager");
   //if (verbose) wifiHelp.EnableLogComponents ();  // Turn on all Wifi logging
 
   NqosWifiMacHelper wifiApMacHelp, wifiStaMacHelp, wifiAdHocMacHelp = NqosWifiMacHelper::Default(); // mac with disabled rate control
@@ -286,8 +282,6 @@ int main (int argc, char *argv[])
   Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue ("2200"));
   // turn off RTS/CTS for frames below 2200 bytes
   Config::SetDefault ("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue ("2200"));
-  // Fix non-unicast data rate to be the same as that of unicast
-  Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode", StringValue (phyMode));
 
   YansWifiChannelHelper wifiChannelHelp = YansWifiChannelHelper::Default ();
                         wifiChannelHelp.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");

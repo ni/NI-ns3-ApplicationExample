@@ -77,7 +77,7 @@ static int32_t DeserializePayload(
 
 //--------------------------------------------------------------------------------------
 
-// Add serialization/deserialization fucntions for each NIAPI message as needed
+// Add serialization/deserialization functions for each NIAPI message as needed
 
 int32_t SerializePhyDlTxConfigReq(
   PhyDlTxConfigReq* p_phyDlTxConfigReq,
@@ -102,6 +102,33 @@ int32_t SerializePhyUlTxPayloadReq(
   uint8_t*           p_buffer,
   uint32_t*          p_bufferOffset
 );
+
+//**************** 5G Messages
+int32_t SerializePhyFiveGDlTxConfigReq(
+  Phy5GDlTxConfigReq* p_phy5GDlTxConfigReq,
+  uint8_t*            p_buffer,
+  uint32_t*           p_bufferOffset
+);
+
+int32_t SerializePhyFiveGUlTxConfigReq(
+  Phy5GUlTxConfigReq* p_phy5GUlTxConfigReq,
+  uint8_t*            p_buffer,
+  uint32_t*           p_bufferOffset
+);
+
+int32_t SerializePhyFiveGDlRxConfigReq(
+  Phy5GDlRxConfigReq* p_phy5GDlRxConfigReq,
+  uint8_t*            p_buffer,
+  uint32_t*           p_bufferOffset
+);
+
+int32_t SerializePhyFiveGUlRxConfigReq(
+  Phy5GUlRxConfigReq* p_phy5GUlRxConfigReq,
+  uint8_t*            p_buffer,
+  uint32_t*           p_bufferOffset
+);
+
+//**************** End of 5G Messages
 
 int32_t DeserializePhyDlschRxInd(
   PhyDlschRxInd* p_phyDlschRxInd,

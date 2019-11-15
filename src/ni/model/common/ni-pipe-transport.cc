@@ -35,7 +35,6 @@
 #include "ns3/ni-remote-control-engine.h"
 #include "ni-pipe-transport.h"
 
-
 namespace ns3 {
   NiPipeTransport::NiPipeTransport ()
   {
@@ -158,10 +157,14 @@ NiPipeTransport::DeInit(void)
   NI_LOG_DEBUG( "rxThread finished");
 
   NI_LOG_CONSOLE_INFO("\n-------- NI L1-L2 API Statistics --------");
-  NI_LOG_CONSOLE_INFO("PhyTimingInd       = " << m_numPhyTimingInd);
-  NI_LOG_CONSOLE_INFO("PhyDlTxConfigReq   = " << m_numPhyDlTxConfigReq);
-  NI_LOG_CONSOLE_INFO("PhyDlTxPayloadReq  = " << m_numPhyDlTxPayloadReq);
-  NI_LOG_CONSOLE_INFO("PhyUlTxPayloadReq  = " << m_numPhyUlTxPayloadReq);
+  NI_LOG_CONSOLE_INFO("PhyTimingInd        = " << m_numPhyTimingInd);
+  NI_LOG_CONSOLE_INFO("PhyDlTxConfigReq    = " << m_numPhyDlTxConfigReq);
+  NI_LOG_CONSOLE_INFO("PhyDlTxPayloadReq   = " << m_numPhyDlTxPayloadReq);
+  NI_LOG_CONSOLE_INFO("PhyUlTxPayloadReq   = " << m_numPhyUlTxPayloadReq);
+  NI_LOG_CONSOLE_INFO("5GPhyDlTxConfigReq  = " << m_numFiveGPhyDlTxConfigReq);
+  NI_LOG_CONSOLE_INFO("5GPhyDlRxConfigReq  = " << m_numFiveGPhyDlRxConfigReq);
+  NI_LOG_CONSOLE_INFO("5GPhyUlTxConfigReq  = " << m_numFiveGPhyUlTxConfigReq);
+  NI_LOG_CONSOLE_INFO("5GPhyUlRxConfigReq  = " << m_numFiveGPhyUlRxConfigReq);
   for (uint32_t i; i < CNF_NUM_STATUS_CODES; i++)
     {
       if (m_numPhyCnf[i] > 0)
@@ -169,9 +172,10 @@ NiPipeTransport::DeInit(void)
           NI_LOG_CONSOLE_INFO("PhyCnf (Status " << i << ") = " << m_numPhyCnf[i]);
         }
     }
-  NI_LOG_CONSOLE_INFO("PhyDlschRxInd      = " << m_numPhyDlschRxInd);
-  NI_LOG_CONSOLE_INFO("PhyCellMeasInd     = " << m_numPhyCellMeasInd);
-  NI_LOG_CONSOLE_INFO("PhyUlschRxInd      = " << m_numPhyUlschRxInd);
+  NI_LOG_CONSOLE_INFO("PhyCellMeasInd      = " << m_numPhyCellMeasInd);
+  NI_LOG_CONSOLE_INFO("PhyDlschRxInd       = " << m_numPhyDlschRxInd);
+  NI_LOG_CONSOLE_INFO("PhyUlschRxInd       = " << m_numPhyUlschRxInd);
+  NI_LOG_CONSOLE_INFO("PhyRxIndCrcFails    = " << m_numCrcFails);
   NI_LOG_CONSOLE_INFO("-----------------------------------------\n");
 
   free( m_pBufU8Pipe1 );
@@ -414,6 +418,9 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
                             NI_LOG_NONE("Finished NS3 Rx processing");
                           }
                       }
+                    else{
+                        m_numCrcFails++;
+                    }
                   }
                 else
                   {
@@ -596,6 +603,175 @@ int32_t NiPipeTransport::CreateAndSendDlTxConfigReqMsg(
 
   return nwrite;
 }
+
+///////////// 5G Messages /////////////
+
+//======================================================================================
+int32_t NiPipeTransport::CreateAndSendFiveGDlTxConfigReqMsg(
+    uint32_t sfn,
+    uint32_t tti,
+    uint32_t scs
+)
+{
+  NI_LOG_DEBUG ("Create DL Config REQ Message with" <<
+                " sfn: " << sfn <<
+                ", tti: " << tti <<
+                ", scs: " << scs);
+
+  int32_t  nwrite = 0;
+
+  // create dl config request data structure and initialize
+  Phy5GDlTxConfigReq phyFiveGDlTxConfigReq;
+  InitializePhy5GDlTxConfigReq( &phyFiveGDlTxConfigReq );
+  // update general and sub message headers
+  phyFiveGDlTxConfigReq.genMsgHdr.refId                      = m_msgRefId++;
+  phyFiveGDlTxConfigReq.subMsgHdr.cnfMode                    = 1;    // request confirmations from PHY
+  // TODO-NI: re-calculate NS-3 timing to PHY timing
+  phyFiveGDlTxConfigReq.subMsgHdr.sfn                        = GetTimingIndSfn(); //TODO-NI: replace by caller Sfn
+  phyFiveGDlTxConfigReq.subMsgHdr.tti                        = GetTimingIndTti(); //TODO-NI: replace by caller Tti
+  // update 5G SCS config
+  phyFiveGDlTxConfigReq.FiveGDlTxConfigBody.scs              = scs;
+
+  // serialize dl config request message
+  m_bufOffsetU8Pipe2 = 0;
+
+
+  SerializePhyFiveGDlTxConfigReq( &phyFiveGDlTxConfigReq, m_pBufU8Pipe2, &m_bufOffsetU8Pipe2 );
+
+  // send tx config request message to lte application framework l1-l2 api
+  nwrite = NiPipe::PipeWrite( &m_fd2, m_pBufU8Pipe2, (uint16_t)m_bufOffsetU8Pipe2 );
+  m_numFiveGPhyDlTxConfigReq++;
+
+  return nwrite;
+}
+
+
+//======================================================================================
+int32_t NiPipeTransport::CreateAndSendFiveGDlRxConfigReqMsg(
+    uint32_t sfn,
+    uint32_t tti,
+    uint32_t scs
+)
+{
+  NI_LOG_DEBUG ("Create 5G DL Config REQ Message with" <<
+                " sfn: " << sfn <<
+                ", tti: " << tti <<
+                ", scs: " << scs);
+
+  int32_t  nwrite = 0;
+
+  // create dl config request data structure and initialize
+  Phy5GDlRxConfigReq phyFiveGDlRxConfigReq;
+  InitializePhy5GDlRxConfigReq( &phyFiveGDlRxConfigReq );
+  // update general and sub message headers
+  phyFiveGDlRxConfigReq.genMsgHdr.refId                      = m_msgRefId++;
+  phyFiveGDlRxConfigReq.subMsgHdr.cnfMode                    = 1;    // request confirmations from PHY
+  // TODO-NI: re-calculate NS-3 timing to PHY timing
+  phyFiveGDlRxConfigReq.subMsgHdr.sfn                        = GetTimingIndSfn(); //TODO-NI: replace by caller Sfn
+  phyFiveGDlRxConfigReq.subMsgHdr.tti                        = GetTimingIndTti(); //TODO-NI: replace by caller Tti
+  // update dlsch config
+  phyFiveGDlRxConfigReq.FiveGDlRxConfigBody.scs              = scs;
+
+
+  // serialize 5G dl config request message
+  m_bufOffsetU8Pipe2 = 0;
+
+
+  SerializePhyFiveGDlRxConfigReq( &phyFiveGDlRxConfigReq, m_pBufU8Pipe2, &m_bufOffsetU8Pipe2 );
+
+  // send tx config request message to lte application framework l1-l2 api
+  nwrite = NiPipe::PipeWrite( &m_fd2, m_pBufU8Pipe2, (uint16_t)m_bufOffsetU8Pipe2 );
+  m_numFiveGPhyDlRxConfigReq++;
+
+  return nwrite;
+}
+
+
+//======================================================================================
+int32_t NiPipeTransport::CreateAndSendFiveGUlTxConfigReqMsg(
+    uint32_t sfn,
+    uint32_t tti,
+    uint32_t scs
+)
+{
+  NI_LOG_DEBUG ("Create DL Config REQ Message with" <<
+                " sfn: " << sfn <<
+                ", tti: " << tti <<
+                ", scs: " << scs);
+
+  int32_t  nwrite = 0;
+
+  // create dl config request data structure and initialize
+  Phy5GUlTxConfigReq phyFiveGUlTxConfigReq;
+  InitializePhy5GUlTxConfigReq( &phyFiveGUlTxConfigReq );
+  // update general and sub message headers
+  phyFiveGUlTxConfigReq.genMsgHdr.refId                      = m_msgRefId++;
+  phyFiveGUlTxConfigReq.subMsgHdr.cnfMode                    = 1;    // request confirmations from PHY
+  // TODO-NI: re-calculate NS-3 timing to PHY timing
+  phyFiveGUlTxConfigReq.subMsgHdr.sfn                        = GetTimingIndSfn(); //TODO-NI: replace by caller Sfn
+  phyFiveGUlTxConfigReq.subMsgHdr.tti                        = GetTimingIndTti(); //TODO-NI: replace by caller Tti
+  // update dlsch config
+  phyFiveGUlTxConfigReq.FiveGUlTxConfigBody.scs                = scs;
+
+
+  // serialize dl config request message
+  m_bufOffsetU8Pipe2 = 0;
+
+
+  SerializePhyFiveGUlTxConfigReq( &phyFiveGUlTxConfigReq, m_pBufU8Pipe2, &m_bufOffsetU8Pipe2 );
+
+  // send tx config request message to lte application framework l1-l2 api
+  nwrite = NiPipe::PipeWrite( &m_fd2, m_pBufU8Pipe2, (uint16_t)m_bufOffsetU8Pipe2 );
+  m_numFiveGPhyUlTxConfigReq++;
+
+  return nwrite;
+}
+
+
+//======================================================================================
+int32_t NiPipeTransport::CreateAndSendFiveGUlRxConfigReqMsg(
+    uint32_t sfn,
+    uint32_t tti,
+    uint32_t scs
+)
+{
+  NI_LOG_DEBUG ("Create DL Config REQ Message with" <<
+                " sfn: " << sfn <<
+                ", tti: " << tti <<
+                ", scs: " << scs);
+
+  int32_t  nwrite = 0;
+
+  // create dl config request data structure and initialize
+  Phy5GUlRxConfigReq phyFiveGUlRxConfigReq;
+  InitializePhy5GUlRxConfigReq( &phyFiveGUlRxConfigReq );
+  // update general and sub message headers
+  phyFiveGUlRxConfigReq.genMsgHdr.refId                      = m_msgRefId++;
+  phyFiveGUlRxConfigReq.subMsgHdr.cnfMode                    = 1;    // request confirmations from PHY
+  // TODO-NI: re-calculate NS-3 timing to PHY timing
+  phyFiveGUlRxConfigReq.subMsgHdr.sfn                        = GetTimingIndSfn(); //TODO-NI: replace by caller Sfn
+  phyFiveGUlRxConfigReq.subMsgHdr.tti                        = GetTimingIndTti(); //TODO-NI: replace by caller Tti
+  // update dlsch config
+  phyFiveGUlRxConfigReq.FiveGUlRxConfigBody.scs              = scs;
+
+
+  // serialize dl config request message
+  m_bufOffsetU8Pipe2 = 0;
+
+
+  SerializePhyFiveGUlRxConfigReq( &phyFiveGUlRxConfigReq, m_pBufU8Pipe2, &m_bufOffsetU8Pipe2 );
+
+  // send tx config request message to lte application framework l1-l2 api
+  nwrite = NiPipe::PipeWrite( &m_fd2, m_pBufU8Pipe2, (uint16_t)m_bufOffsetU8Pipe2 );
+  m_numFiveGPhyUlRxConfigReq++;
+
+  return nwrite;
+}
+
+
+//======================================================================================
+///////////// End of 5G Messages /////////////
+
 
 int32_t NiPipeTransport::CreateAndSendDlTxPayloadReqMsg(
     uint32_t sfn,

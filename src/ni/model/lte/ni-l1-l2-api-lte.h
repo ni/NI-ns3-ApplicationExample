@@ -50,6 +50,14 @@ namespace ns3 {
 #define PHY_DLSCH_RX_IND         0x4801   // 18433
 #define PHY_CELL_MEASUREMENT_IND 0x4803   // 18435
 
+// 5G Messages
+
+#define PHY_5G_DL_TX_CONFIG_REQ   0x4504   // 17668
+#define PHY_5G_DL_RX_CONFIG_REQ   0x4905   // 18693
+#define PHY_5G_UL_TX_CONFIG_REQ   0x4904   // 18692
+#define PHY_5G_UL_RX_CONFIG_REQ   0x4505   // 17669
+
+
 //--------------------------------------------------------------
 
 // subMsgType used in ParSetHdr
@@ -59,6 +67,10 @@ namespace ns3 {
 #define DLSCH_MAC_PDU           0x0
 #define ULSCH_MAC_PDU           0x0
 #define CELL_MEASUREMENT_REPORT 0x0
+
+//subMsgType used in 5G Message
+
+#define FiveG_TX_CONFIG               0x0
 
 //--------------------------------------------------------------
 
@@ -282,6 +294,21 @@ static const LteElementsSpec ulschMacPduRxBodySpec = {
 };
 
 
+//--------------------------------------------------------------------------------------
+// PHY_XL_XX_CONFIG_REQ -- 11 bytes
+//--------------------------------------------------------------------------------------
+
+typedef struct sFiveGTxConfigBody {
+  uint32_t scs;
+  uint64_t reserved;
+} FiveGTxConfigBody;
+
+static const LteElementsSpec FiveGTxConfigBodySpec = {
+  .numEl    = 2,
+  .byteWidth = {4, 7},
+};
+
+
 
 //======================================================================================
 // Definition of complete NIAPI messages
@@ -342,6 +369,39 @@ typedef struct sPhyUlschRxInd {
   ParSetHdr         ulschMacPduRxHdr;
   UlschMacPduRxBody ulschMacPduRxBody;
 } PhyUlschRxInd;
+
+
+//********** 5G Messages
+typedef struct sPhy5GDlTxConfigReq {
+  GenMsgHdr         genMsgHdr;
+  LteSubMsgHdr      subMsgHdr;
+  ParSetHdr         FiveGDlTxConfigHdr;
+  FiveGTxConfigBody FiveGDlTxConfigBody;
+} Phy5GDlTxConfigReq;
+
+typedef struct sPhy5GUlTxConfigReq {
+  GenMsgHdr         genMsgHdr;
+  LteSubMsgHdr      subMsgHdr;
+  ParSetHdr         FiveGUlTxConfigHdr;
+  FiveGTxConfigBody FiveGUlTxConfigBody;
+} Phy5GUlTxConfigReq;
+
+typedef struct sPhy5GDlRxConfigReq {
+  GenMsgHdr         genMsgHdr;
+  LteSubMsgHdr      subMsgHdr;
+  ParSetHdr         FiveGDlRxConfigHdr;
+  FiveGTxConfigBody FiveGDlRxConfigBody;
+} Phy5GDlRxConfigReq;
+
+typedef struct sPhy5GUlRxConfigReq {
+  GenMsgHdr         genMsgHdr;
+  LteSubMsgHdr      subMsgHdr;
+  ParSetHdr         FiveGUlRxConfigHdr;
+  FiveGTxConfigBody FiveGUlRxConfigBody;
+} Phy5GUlRxConfigReq;
+
+//********** End of 5G Messages
+
 //======================================================================================
 //======================================================================================
 

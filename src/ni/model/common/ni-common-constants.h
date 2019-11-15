@@ -24,7 +24,7 @@
 
 
 #define NI_MODULE_VERSION_MAJOR 2
-#define NI_MODULE_VERSION_MINOR 0
+#define NI_MODULE_VERSION_MINOR 1
 #define NI_MODULE_VERSION_FIX   0
 
 #define NI_MODULE_VERSION (std::to_string(NI_MODULE_VERSION_MAJOR) + "." + std::to_string(NI_MODULE_VERSION_MINOR) + "." + std::to_string(NI_MODULE_VERSION_FIX))

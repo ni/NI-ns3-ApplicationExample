@@ -627,6 +627,123 @@ int32_t InitializePhyDlTxConfigReq( PhyDlTxConfigReq* p_phyDlTxConfigReq )
 //=============================================================================================================================
 
 
+//************************ 5G Messages ************************
+//=============================================================================================================================
+// Initialize PHY_5G_DL_TX_CONFIG_REQ with default values
+int32_t InitializePhy5GDlTxConfigReq( Phy5GDlTxConfigReq* p_phy5GDlTxConfigReq )
+//=============================================================================================================================
+{
+
+  (*p_phy5GDlTxConfigReq).genMsgHdr.msgType    = PHY_5G_DL_TX_CONFIG_REQ;
+  (*p_phy5GDlTxConfigReq).genMsgHdr.refId      = 0;   // update in loop
+  (*p_phy5GDlTxConfigReq).genMsgHdr.instId     = 0;   // unused
+  (*p_phy5GDlTxConfigReq).genMsgHdr.bodyLength = 24;  // in bytes, excl. genMsgHdr
+
+  (*p_phy5GDlTxConfigReq).subMsgHdr.sfn        = 0;   // update in loop
+  (*p_phy5GDlTxConfigReq).subMsgHdr.tti        = 0;   // update in loop
+  (*p_phy5GDlTxConfigReq).subMsgHdr.numSubMsg  = 1;   // just one submessage as of now
+  (*p_phy5GDlTxConfigReq).subMsgHdr.cnfMode    = 0;   // 0 = no confirmation
+  (*p_phy5GDlTxConfigReq).subMsgHdr.resField   = 0;  // 8 in total
+
+  (*p_phy5GDlTxConfigReq).FiveGDlTxConfigHdr.subMsgType       = FiveG_TX_CONFIG;
+  (*p_phy5GDlTxConfigReq).FiveGDlTxConfigHdr.parSetId         = 0;
+  (*p_phy5GDlTxConfigReq).FiveGDlTxConfigHdr.parSetBodyLength = 11; // in bytes //Size is 5 bytes
+
+  (*p_phy5GDlTxConfigReq).FiveGDlTxConfigBody.scs         = 0;  // update in loop
+  (*p_phy5GDlTxConfigReq).FiveGDlTxConfigBody.reserved    = 0;  // 7 bytes just for byte alignment.
+
+  return 0;
+}
+//=============================================================================================================================
+//=============================================================================================================================
+
+
+// Initialize PHY_5G_DL_RX_CONFIG_REQ with default values
+int32_t InitializePhy5GDlRxConfigReq( Phy5GDlRxConfigReq* p_phy5GDlRxConfigReq )
+//=============================================================================================================================
+{
+
+  (*p_phy5GDlRxConfigReq).genMsgHdr.msgType    = PHY_5G_DL_RX_CONFIG_REQ;
+  (*p_phy5GDlRxConfigReq).genMsgHdr.refId      = 0;   // update in loop
+  (*p_phy5GDlRxConfigReq).genMsgHdr.instId     = 0;   // unused
+  (*p_phy5GDlRxConfigReq).genMsgHdr.bodyLength = 24;  // in bytes, excl. genMsgHdr
+
+  (*p_phy5GDlRxConfigReq).subMsgHdr.sfn        = 0;   // update in loop
+  (*p_phy5GDlRxConfigReq).subMsgHdr.tti        = 0;   // update in loop
+  (*p_phy5GDlRxConfigReq).subMsgHdr.numSubMsg  = 1;   // just one submessage as of now
+  (*p_phy5GDlRxConfigReq).subMsgHdr.cnfMode    = 0;   // 0 = no confirmation
+  (*p_phy5GDlRxConfigReq).subMsgHdr.resField   = 0;
+
+  (*p_phy5GDlRxConfigReq).FiveGDlRxConfigHdr.subMsgType       = FiveG_TX_CONFIG; // 4
+  (*p_phy5GDlRxConfigReq).FiveGDlRxConfigHdr.parSetId         = 0;
+  (*p_phy5GDlRxConfigReq).FiveGDlRxConfigHdr.parSetBodyLength = 11; // in bytes
+
+  (*p_phy5GDlRxConfigReq).FiveGDlRxConfigBody.scs         = 0;  // update in loop
+  (*p_phy5GDlRxConfigReq).FiveGDlRxConfigBody.reserved    = 0;
+
+  return 0;
+}
+//=============================================================================================================================
+//=============================================================================================================================
+
+
+int32_t InitializePhy5GUlTxConfigReq( Phy5GUlTxConfigReq* p_phy5GUlTxConfigReq )
+//=============================================================================================================================
+{
+
+  (*p_phy5GUlTxConfigReq).genMsgHdr.msgType    = PHY_5G_UL_TX_CONFIG_REQ;
+  (*p_phy5GUlTxConfigReq).genMsgHdr.refId      = 0;   // update in loop
+  (*p_phy5GUlTxConfigReq).genMsgHdr.instId     = 0;   // unused
+  (*p_phy5GUlTxConfigReq).genMsgHdr.bodyLength = 24;  // in bytes, excl. genMsgHdr
+
+  (*p_phy5GUlTxConfigReq).subMsgHdr.sfn        = 0;   // update in loop
+  (*p_phy5GUlTxConfigReq).subMsgHdr.tti        = 0;   // update in loop
+  (*p_phy5GUlTxConfigReq).subMsgHdr.numSubMsg  = 1;   // just one submessage as of now
+  (*p_phy5GUlTxConfigReq).subMsgHdr.cnfMode    = 0;   // 0 = no confirmation
+  (*p_phy5GUlTxConfigReq).subMsgHdr.resField   = 0;
+
+  (*p_phy5GUlTxConfigReq).FiveGUlTxConfigHdr.subMsgType       = FiveG_TX_CONFIG;
+  (*p_phy5GUlTxConfigReq).FiveGUlTxConfigHdr.parSetId         = 0;
+  (*p_phy5GUlTxConfigReq).FiveGUlTxConfigHdr.parSetBodyLength = 11; // in bytes
+
+  (*p_phy5GUlTxConfigReq).FiveGUlTxConfigBody.scs         = 0;  // update in loop
+  (*p_phy5GUlTxConfigReq).FiveGUlTxConfigBody.reserved    = 0;
+
+  return 0;
+}
+//=============================================================================================================================
+//=============================================================================================================================
+
+
+int32_t InitializePhy5GUlRxConfigReq( Phy5GUlRxConfigReq* p_phy5GUlRxConfigReq )
+//=============================================================================================================================
+{
+
+  (*p_phy5GUlRxConfigReq).genMsgHdr.msgType    = PHY_5G_UL_RX_CONFIG_REQ;
+  (*p_phy5GUlRxConfigReq).genMsgHdr.refId      = 0;   // update in loop
+  (*p_phy5GUlRxConfigReq).genMsgHdr.instId     = 0;   // unused
+  (*p_phy5GUlRxConfigReq).genMsgHdr.bodyLength = 24;  // in bytes, excl. genMsgHdr
+
+  (*p_phy5GUlRxConfigReq).subMsgHdr.sfn        = 0;   // update in loop
+  (*p_phy5GUlRxConfigReq).subMsgHdr.tti        = 0;   // update in loop
+  (*p_phy5GUlRxConfigReq).subMsgHdr.numSubMsg  = 1;   // just one submessage as of now
+  (*p_phy5GUlRxConfigReq).subMsgHdr.cnfMode    = 0;   // 0 = no confirmation
+  (*p_phy5GUlRxConfigReq).subMsgHdr.resField   = 0;
+
+  (*p_phy5GUlRxConfigReq).FiveGUlRxConfigHdr.subMsgType       = FiveG_TX_CONFIG;
+  (*p_phy5GUlRxConfigReq).FiveGUlRxConfigHdr.parSetId         = 0;
+  (*p_phy5GUlRxConfigReq).FiveGUlRxConfigHdr.parSetBodyLength = 11; // in bytes
+
+  (*p_phy5GUlRxConfigReq).FiveGUlRxConfigBody.scs         = 0;  // update in loop
+  (*p_phy5GUlRxConfigReq).FiveGUlRxConfigBody.reserved    = 0;
+
+  return 0;
+}
+//=============================================================================================================================
+//=============================================================================================================================
+
+//************************ End of 5G Messages ************************
+
 //=============================================================================================================================
 // Initialize PHY_DL_TX_PAYLOAD_REQ with default values.
 int32_t InitializePhyDlTxPayloadReq( PhyDlTxPayloadReq* p_phyDlTxPayloadReq )

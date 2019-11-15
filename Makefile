@@ -58,6 +58,9 @@ prepare_usrp_2974_lvcomms20:
 prepare_usrp_2974_lvcomms20_dev:
 	opkg update; opkg install --force-downgrade packagegroup-core-buildessential gcc-dev python-pip python-dev boost boost-dev mono-dev sudo rsync tcpdump htop
 	
+prepare_usrp_2974_lvcomms21_dev:
+	opkg update; opkg install packagegroup-core-buildessential gcc-dev python-pip python-dev boost boost-dev mono-dev sudo rsync tcpdump htop
+	
 run_tests_ni:
 	cd src/ni/test/; ./ni_test_single_instance.sh; ./ni_test.sh; cd -
 	
