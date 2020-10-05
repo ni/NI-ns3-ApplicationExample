@@ -138,7 +138,7 @@ NS_OBJECT_ENSURE_REGISTERED (UeManager);
 
 UeManager::UeManager ()
 {
-  NS_FATAL_ERROR ("this constructor is not espected to be used");
+  NS_FATAL_ERROR ("this constructor is not expected to be used");
 }
 
 
@@ -1529,14 +1529,11 @@ UeManager::SwitchToState (State newState)
 
   NI_LOG_INFO ("UeManager::UeManager::SwitchToState: imsi=" << m_imsi << " rnti=" << m_rnti << " " << ToString (oldState) << " --> " << ToString (newState) );
   NI_LOG_CONSOLE_DEBUG ("LTE.ENB.RRC: " << ToString (oldState) << " --> " << ToString (newState) << " (IMSI=" << m_imsi << ", RNTI=" << m_rnti << ")");
-  if ( (!NI_LOG_ENABLED) && (oldState == CONNECTION_RECONFIGURATION && newState == CONNECTED_NORMALLY) )
+  if (!NI_LOG_ENABLED)
     {
-      NI_LOG_CONSOLE_INFO("ENB RRC CONNECTED");
-    }
-
-  if ( (!NI_LOG_ENABLED) && (oldState == DALI_DUAL_CONNECTIVITY_CONFIGURATION && newState == CONNECTED_NORMALLY) )
-    {
-      NI_LOG_CONSOLE_INFO("ENB RRC CONNECTED (DC)");
+      if (oldState == CONNECTION_SETUP && newState == CONNECTED_NORMALLY) NI_LOG_CONSOLE_INFO("ENB RRC CONNECTED");
+      if (oldState == CONNECTION_RECONFIGURATION && newState == CONNECTED_NORMALLY) NI_LOG_CONSOLE_INFO("ENB RRC RECONFIGURATION COMPLETED");
+      if (oldState == DALI_DUAL_CONNECTIVITY_CONFIGURATION && newState == CONNECTED_NORMALLY) NI_LOG_CONSOLE_INFO("ENB RRC DC CONFIGURATION COMPLETED");
     }
 
   switch (newState)

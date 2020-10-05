@@ -105,6 +105,13 @@ main (int argc, char *argv[])
    uint32_t nLteUeNodes = 1;
    uint32_t nLteEnbNodes = 1;
 
+   // 5G DL subccarrier spacing. 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz
+   uint32_t dlscs = 0;
+   // 5G UL subccarrier spacing
+   uint32_t ulscs = 0;
+   //SFN to make a change in the SCS value used.
+   uint32_t ScsSwitchTargetSfn=0;
+
    // ========================
    // general NI API parameter
 
@@ -126,6 +133,8 @@ main (int argc, char *argv[])
     */
    std::string niApiDevMode = "NIAPI_BSTS";
 
+   std::string niAfwVersion = NI_AFW_VERSION; // for LTE/WIFI we use 2.2, for 5G-GFDM we use 2.5 see below
+
    // ====================
    // NI API LTE parameter
 
@@ -133,6 +142,8 @@ main (int argc, char *argv[])
   std::string niApiLteDevMode = "NIAPI_ALL";
   // Activate NIAPI for LTE
   bool niApiLteEnabled = false;
+  // Activate additional NI API Messages for 5G
+  bool niApiLte5gEnabled = false;
   // Activate NIAPI loopback mode for LTE
   bool niApiLteLoopbackEnabled = false; // true UDP, false Pipes
   // sinr value in db used for cqi calculation for the ni phy
@@ -149,6 +160,8 @@ main (int argc, char *argv[])
    double dualConnectivityLaunchTime = 5.2;
    // Activate PCDP in-Sequence reordering function
    bool usePdcpInSequenceDelivery = false;
+   // dual connectivity configuration
+   uint32_t dcactivate=1;      // MeNB/UE=0, MeNB/UE+SeNB/UE=1 (split bearer), SeNB/UE=2
 
   // Command line arguments
   CommandLine cmd;
@@ -161,11 +174,16 @@ main (int argc, char *argv[])
   cmd.AddValue("niApiEnableLogging", "Set whether to enable NIAPI_DebugLogs", niApiEnableLogging);
   cmd.AddValue("niApiDevMode", "Set whether the simulation should run as Master or Secondary, and BS or Terminal", niApiDevMode);
   cmd.AddValue("niApiLteEnabled", "Enable NI API for LTE", niApiLteEnabled);
+  cmd.AddValue("niApiLte5gEnabled", "Enable additional NI API Messages for 5G", niApiLte5gEnabled);
   cmd.AddValue("niApiLteLoopbackEnabled", "Enable/disable UDP loopback mode for LTE NI API", niApiLteLoopbackEnabled);
+  cmd.AddValue("setDlScs", "Set initial value for the DL Subcarrier Spacing (SCS). 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz", dlscs);
+  cmd.AddValue("setUlScs", "Set initial value for the UL Subcarrier Spacing (SCS). 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz", ulscs);
+  cmd.AddValue("nextScsSwitchTargetSfn", "Set next SFN to switch the value ",ScsSwitchTargetSfn);
   cmd.AddValue("daliDualConnectivityEnabled", "Enable/disable DALI Dual Connectivity configuration", daliDualConnectivityEnabled);
   cmd.AddValue("fdDeviceName", "Interface name for emu FdDevice communication", fdDeviceName);
   cmd.AddValue("dualConnectivityLaunchTime", "Time in seconds when DALI Dual Connectivity packet transmission should be scheduled", dualConnectivityLaunchTime);
   cmd.AddValue("usePdcpInSequenceDelivery", "Enable/disable DALI PDCP In-Sequence reordering function", usePdcpInSequenceDelivery);
+  cmd.AddValue("dcactivate", "Activate DC interworking (LTE=0, LTE+5G=1, 5G=2)", dcactivate);
   cmd.Parse(argc, argv);
 
   // Activate the ns-3 real time simulator
@@ -239,13 +257,17 @@ main (int argc, char *argv[])
 
   }
 
-  // print ouf config parameters
+  // for 5G-GFDM we use AFW 2.5
+  if (niApiLteEnabled && niApiLte5gEnabled)
+    niAfwVersion = NI_AFW_VERSION_5G_GFDM;
+
+  // print out config parameters
   // TODO-NI: replace cout by NI_LOG_CONSOLE_INFO
   std::cout << std::endl;
   std::cout << "-------- NS-3 Configuration -------------" << std::endl;
 
 
-  std::cout << "Running LTE node as:  ";
+  std::cout << "Running LTE node as:    ";
   if (niApiLteDevMode == "NIAPI_ALL") std::cout << "ENB and UE" << std::endl;
   else if (niApiLteDevMode == "NIAPI_ENB")  std::cout << "ENB" << std::endl;
   else if (niApiLteDevMode == "NIAPI_UE")   std::cout << "UE" << std::endl;
@@ -253,6 +275,10 @@ main (int argc, char *argv[])
   std::cout << "LTE API:                ";
   if (niApiLteEnabled == true) std::cout << "enabled" << std::endl;
   else                         std::cout << "disabled" << std::endl;
+
+  std::cout << "5G API extensions:      ";
+  if (niApiLte5gEnabled == true) std::cout << "enabled" << std::endl;
+  else                           std::cout << "disabled" << std::endl;
 
   std::cout << "LTE UDP Loopback:       ";
   if (niApiLteLoopbackEnabled == true) std::cout << "enabled" << std::endl;
@@ -265,14 +291,13 @@ main (int argc, char *argv[])
   std::cout << "Logging:                ";
   if (niApiEnableLogging == true) std::cout << "enabled" << std::endl;
   else                            std::cout << "disabled" << std::endl;
-  //std::cout << "disabled" << std::endl;
 
   std::cout << "DALI Dual Connectivity: ";
   if (daliDualConnectivityEnabled) std::cout << "enabled" << std::endl;
   else                             std::cout << "disabled" << std::endl;
 
   std::cout << "NI Module Version:      " << NI_MODULE_VERSION << std::endl;
-  //std::cout << "Required AFW Version:   " << NI_AFW_VERSION << std::endl;
+  std::cout << "Required AFW Version:   " << niAfwVersion << std::endl;
 
 
   std::cout << std::endl;
@@ -284,7 +309,7 @@ main (int argc, char *argv[])
   const int niRemoteControlPriority = ns3Priority - 11;
 
   // adding thread ID of main NS3 thread for possible troubleshooting
-  NiUtils::AddThreadInfo(pthread_self(), "NS3 main thread");
+  NiUtils::AddThreadInfo("NS3 main thread");
 
   // install signal handlers in order to print debug information to std::out in case of an error
   NiUtils::InstallSignalHandler();
@@ -395,6 +420,29 @@ main (int argc, char *argv[])
    Config::SetDefault ("ns3::NiLtePhyInterface::niChSinrValueDb", DoubleValue (niChSinrValueDb));
    // Set the CQI report period for the ni phy
    Config::SetDefault ("ns3::NiLtePhyInterface::niCqiReportPeriodMs", UintegerValue (100));
+   // Enable/ disable the 5G API
+   Config::SetDefault ("ns3::NiLtePhyInterface::niApiLte5gEnabled",BooleanValue(niApiLte5gEnabled));
+   // Use simple round robin scheduler here (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
+   std::string LteMacSchedulerType = "ns3::RrFfMacScheduler";
+
+
+   //Enables the SCS configuration and the GFDM Complaint Round Robin MAC Scheduler only if both
+   //are true, meaning that GFDM transmission is desired.
+   if (niApiLteEnabled && niApiLte5gEnabled)
+     {
+       //************** 5G values set up.
+       //Set the DL SCS for the ni Phy.
+       Config::SetDefault ("ns3::NiLtePhyInterface::niDlScs", UintegerValue (dlscs));
+       //Set the UL SCS for the ni Phy.
+       Config::SetDefault ("ns3::NiLtePhyInterface::niUlScs", UintegerValue (ulscs));
+       // Use simple round robin scheduler with GFDM specific PRB allocation patterns
+       LteMacSchedulerType = "ns3::NiGfdmRrFfMacScheduler";
+       //Set the SFN to perform SCS change.
+       Config::SetDefault ("ns3::NiLtePhyInterface::nextScsSwitchTargetSfn" , UintegerValue(ScsSwitchTargetSfn));
+       //************** 5G values end.
+     }
+   // Set AFW version to Pipe Tansport layer for named pipe setup
+   Config::SetDefault ("ns3::NiPipeTransport::niAfwVersion" , StringValue(niAfwVersion));
 
    // Set downlink transmission bandwidth in number of resource blocks -> set to 20MHz default here
    Config::SetDefault ("ns3::LteEnbNetDevice::DlBandwidth", UintegerValue (100));
@@ -402,8 +450,12 @@ main (int argc, char *argv[])
    Config::SetDefault ("ns3::DaliLteHelper::UseIdealRrc", BooleanValue (false));
    // Disable CQI measurement reports based on PDSCH (based on ns-3 interference model)
    Config::SetDefault ("ns3::DaliLteHelper::UsePdschForCqiGeneration", BooleanValue (false));
-   // Use simple round robin scheduler here (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
-   Config::SetDefault ("ns3::DaliLteHelper::Scheduler", StringValue ("ns3::RrFfMacScheduler"));
+   // Use simple round robin scheduler; for GFDM with specific PRB allocation patterns
+   Config::SetDefault ("ns3::DaliLteHelper::Scheduler", StringValue (LteMacSchedulerType));
+   // Switch to enable/disable DC functionality
+   Config::SetDefault ("ns3::DaliEnbPdcp::PDCPDecDc", UintegerValue(dcactivate));
+   // Switch to allow LWA/LWIP when DC is enabled
+   Config::SetDefault ("ns3::DaliEnbPdcp::DcLwaLwipSwitch", UintegerValue(0));
    // Set the adpative coding and modulation model to Piro as this is the simpler one
    Config::SetDefault ("ns3::LteAmc::AmcModel", EnumValue (LteAmc::PiroEW2010));
    // Disable HARQ as this not support by PHY and not implemented in NI API
@@ -417,6 +469,7 @@ main (int argc, char *argv[])
    //Config::SetDefault ("ns3::LteEnbRrc::ConnectionRequestTimeoutDuration", StringValue ("+60000000.0ns"));
 
    // update remote control database related parameters
+   g_RemoteControlEngine.GetPdb()->setParameterDcDecVariable(dcactivate);
    g_RemoteControlEngine.GetPdb()->setParameterManualLteUeChannelSinrEnable(false);
    g_RemoteControlEngine.GetPdb()->setParameterLteUeChannelSinr(niChSinrValueDb);
 
@@ -517,7 +570,7 @@ main (int argc, char *argv[])
        i = 1;
        n = 2;
      }
-     for (i; i < n; i++)
+     for ( ; i < n; i++)
        lteHelper->Attach (ueDevices.Get(i), enbDevices.Get(i));
      // side effect: the default EPS bearer will be activated
    }
@@ -716,7 +769,9 @@ main (int argc, char *argv[])
    std::cout << "[#] End simulation" << std::endl << std::endl;
 
    // check received packets
-   if ((niApiDevMode == "NIAPI_TS")||(niApiDevMode == "NIAPI_BSTS")||(niApiDevMode == "NIAPI_MTS")||(niApiDevMode == "NIAPI_MBSTS"))
+   if (!niApiEnableTapBridge &&
+       ((niApiDevMode == "NIAPI_TS")||(niApiDevMode == "NIAPI_BSTS")||
+        (niApiDevMode == "NIAPI_MTS")||(niApiDevMode == "NIAPI_MBSTS")))
      {
        NI_LOG_CONSOLE_INFO ("Received packets: " << appServer->GetReceived()
                             << " / Lost packets: " << packetNum-appServer->GetReceived()

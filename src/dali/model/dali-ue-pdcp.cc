@@ -31,6 +31,8 @@
 #include <ns3/lte-pdcp-tag.h>
 #include "ns3/dali-ue-dcx-sap.h"
 
+#include <ns3/ni-logging.h>
+
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("DaliUePdcp");
@@ -345,14 +347,16 @@ DaliUePdcp::DoReceivePdu (Ptr<Packet> p)
 void
 DaliUePdcp::DoReceivePduSend (Ptr<Packet> p)
 {
-  if(p->GetSize() > 20 + 8 + 12)
-  {
-    LtePdcpSapUser::ReceivePdcpSduParameters params;
-    params.pdcpSdu = p;
-    params.rnti = m_rnti;
-    params.lcid = m_lcid;
-    m_pdcpSapUser->ReceivePdcpSdu (params);
-  }
+  if(p->GetSize() <= 20 + 8 + 12)
+    {
+      // #TODO clarify the need for this length check with DALI developers
+      NI_LOG_WARN("DaliUePdcp length check failed!");
+    }
+  LtePdcpSapUser::ReceivePdcpSduParameters params;
+  params.pdcpSdu = p;
+  params.rnti = m_rnti;
+  params.lcid = m_lcid;
+  m_pdcpSapUser->ReceivePdcpSdu (params);
 }
 
 void

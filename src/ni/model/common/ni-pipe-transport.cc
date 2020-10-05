@@ -26,6 +26,8 @@
 #include <thread>
 #include <string>
 #include <ns3/simulator.h>
+#include <ns3/string.h>
+#include "ns3/ni-lte-constants.h"
 #include "ns3/ni-l1-l2-api-lte-message.h"
 #include "ns3/ni-l1-l2-api-lte-handler.h"
 #include "ns3/ni-lte-sdr-timing-sync.h"
@@ -36,6 +38,26 @@
 #include "ni-pipe-transport.h"
 
 namespace ns3 {
+
+  NS_LOG_COMPONENT_DEFINE ("NiPipeTransport");
+  NS_OBJECT_ENSURE_REGISTERED (NiPipeTransport);
+
+  TypeId
+  NiPipeTransport::GetTypeId (void)
+  {
+    static TypeId tid = TypeId ("ns3::NiPipeTransport")
+      .SetParent<Object> ()
+      .SetGroupName("Ni")
+      .AddConstructor<NiPipeTransport> ()
+      .AddAttribute ("niAfwVersion",
+                     "Version Number of the NI Application Framework",
+                     StringValue (NI_AFW_VERSION),
+                     MakeStringAccessor (&NiPipeTransport::m_niAfwVersion),
+                     MakeStringChecker ())
+       ;
+    return tid;
+  }
+
   NiPipeTransport::NiPipeTransport ()
   {
     m_context = "none";
@@ -43,7 +65,9 @@ namespace ns3 {
     m_niApiTimingIndEndOkCallback = MakeNullCallback< bool, uint16_t, uint8_t, bool >();
     m_niApiDataEndOkCallback = MakeNullCallback< bool, uint8_t* >();
     m_niApiCellMeasurementEndOkCallback = MakeNullCallback< bool, PhyCellMeasInd >();
-    ;
+    m_pBufU8Pipe1 = NULL;
+    m_pBufU8Pipe2 = NULL;
+    m_pBufU8Pipe3 = NULL;
   }
 
   NiPipeTransport::NiPipeTransport (std::string context)
@@ -53,6 +77,9 @@ namespace ns3 {
     m_niApiTimingIndEndOkCallback = MakeNullCallback< bool, uint16_t, uint8_t, bool >();
     m_niApiDataEndOkCallback = MakeNullCallback< bool, uint8_t* >();
     m_niApiCellMeasurementEndOkCallback = MakeNullCallback< bool, PhyCellMeasInd >();
+    m_pBufU8Pipe1 = NULL;
+    m_pBufU8Pipe2 = NULL;
+    m_pBufU8Pipe3 = NULL;
   }
 
   NiPipeTransport::~NiPipeTransport ()
@@ -69,7 +96,26 @@ NiPipeTransport::Init(int timingIndThreadPriority, int rxThreadpriority)
   // initialize named pipes
   //---------------------------------------------------------
 
-  NI_LOG_CONSOLE_DEBUG( "NI.TRANSPORT: Preparing named pipes" );
+  NI_LOG_INFO( "NI.TRANSPORT: Preparing named pipes" );
+
+  if (m_niAfwVersion == NI_AFW_VERSION)
+    {
+      NI_LOG_CONSOLE_INFO( "NI.TRANSPORT: Preparing named pipes for AFW 2.2" );
+      m_pipe_name_1 = (char*)"/tmp/api_transport_0_pipe";
+      m_pipe_name_2 = (char*)"/tmp/api_transport_1_pipe";
+      m_pipe_name_3 = (char*)"/tmp/api_transport_2_pipe";
+    }
+  else if (m_niAfwVersion == NI_AFW_VERSION_5G_GFDM)
+    {
+      NI_LOG_CONSOLE_INFO( "NI.TRANSPORT: Preparing named pipes for AFW 2.5" );
+      m_pipe_name_1 = (char*)"/tmp/api_transport_0-0_pipe";
+      m_pipe_name_2 = (char*)"/tmp/api_transport_0-1_pipe";
+      m_pipe_name_3 = (char*)"/tmp/api_transport_0-2_pipe";
+    }
+  else
+    {
+      NI_LOG_FATAL("NiPipeTransport::Init: unsupported AFW version configured");
+    }
 
   // Assumption: The LV counterpart has created the FIFOs and will also clean them up at the end
   NiPipe::OpenPipeForTx(m_pipe_name_2, &m_fd2);
@@ -86,21 +132,21 @@ NiPipeTransport::Init(int timingIndThreadPriority, int rxThreadpriority)
   m_pBufU8Pipe1 = (uint8_t*)malloc(m_maxPacketSize*sizeof(uint8_t));
   if (m_pBufU8Pipe1 == NULL)
     {
-      NI_LOG_FATAL("NiPipeTransport::Init: malloc for pipe1 failed")
+      NI_LOG_FATAL("NiPipeTransport::Init: malloc for pipe1 failed");
     }
   memset(m_pBufU8Pipe1, 0, m_maxPacketSize);
 
   m_pBufU8Pipe2 = (uint8_t*)malloc(m_maxPacketSize*sizeof(uint8_t));
   if (m_pBufU8Pipe2 == NULL)
     {
-      NI_LOG_FATAL("NiPipeTransport::Init: malloc for pipe2 failed")
+      NI_LOG_FATAL("NiPipeTransport::Init: malloc for pipe2 failed");
     }
   memset(m_pBufU8Pipe2, 0, m_maxPacketSize);
 
   m_pBufU8Pipe3 = (uint8_t*)malloc(m_maxPacketSize*sizeof(uint8_t));
   if (m_pBufU8Pipe3 == NULL)
     {
-      NI_LOG_FATAL("NiPipeTransport::Init: malloc for pipe3 failed")
+      NI_LOG_FATAL("NiPipeTransport::Init: malloc for pipe3 failed");
     }
   memset(m_pBufU8Pipe3, 0, m_maxPacketSize);
 
@@ -192,8 +238,9 @@ NiPipeTransport::ReceiveTimingInd(void)
 {
   // set thread priority
   NiUtils::SetThreadPrioriy(m_timingIndThreadPriority);
-  NiUtils::AddThreadInfo (pthread_self(), (m_context + " NiPipeTransport PhyTimingInd thread"));
-  NI_LOG_DEBUG("NI.PIPE.TRANSPORT: Pipe PhyTimingInd thread with id:" <<  pthread_self() << " started");
+  NiUtils::AddThreadInfo (m_context + " PhyTimingInd Thread");
+  NI_LOG_DEBUG("NI.PIPE.TRANSPORT: Pipe PhyTimingInd thread with id:" <<  m_timingIndThread->Self() << " started");
+  NI_LOG_NONE ("    Waiting for first LTE PHY timing indication...");
 
   // thread loop
   while(!m_timingIndThreadStop)
@@ -238,6 +285,7 @@ NiPipeTransport::ReceiveTimingInd(void)
                     {
                       m_timingIndReceived = true;
                       firstRun = true;
+
                     }
                   m_numPhyTimingInd++;
                   m_lastSysTimeUs = m_sysTimeUs;
@@ -246,13 +294,18 @@ NiPipeTransport::ReceiveTimingInd(void)
                   m_tti = (uint8_t) phyTimingInd.subMsgHdr.tti;
                   m_sfn = (uint16_t) phyTimingInd.subMsgHdr.sfn;
                   NI_LOG_DEBUG ("TimingInd received after: " + std::to_string(m_sysTimeUs-m_lastSysTimeUs) +
-                                " with SFN: " + std::to_string(m_sfn) + " TTI: " +
+                                "us with SFN: " + std::to_string(m_sfn) + " TTI: " +
                                 std::to_string(m_tti));
                   callbackValid = (m_niApiTimingIndEndOkCallback != MakeNullCallback< bool, uint16_t, uint8_t, bool >());
                   if (callbackValid && m_ns3Running)
                     {
                       // provide timing ind information to ni-phy-interface
                       m_niApiTimingIndEndOkCallback(m_sfn, m_tti, firstRun);
+                    }
+                  if (firstRun)
+                    {
+                      NI_LOG_CONSOLE_INFO ("    First NI PHY timing indication received!" << std::endl <<
+                                           "[~] NI PHY with NS-3 Simulator executing..." << std::endl);
                     }
                   done = true;
                   break;
@@ -289,8 +342,8 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
 {
   // set thread priority
   NiUtils::SetThreadPrioriy(m_rxThreadpriority);
-  NiUtils::AddThreadInfo (pthread_self(), (m_context + " NiPipeTransport RxIndCnf thread"));
-  NI_LOG_DEBUG("NI.PIPE.TRANSPORT: Pipe RxIndCnf thread with id:" <<  pthread_self() << " started");
+  NiUtils::AddThreadInfo (m_context + " RxIndCnf Thread");
+  NI_LOG_DEBUG("NI.PIPE.TRANSPORT: Pipe RxIndCnf thread with id:" <<  m_rxThread->Self() << " started");
 
   // thread loop
   while(!m_rxThreadStop)
@@ -336,7 +389,8 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
                               "pipe=" << m_pipe_name_3 << ", num_requested=" << bodyLength << ", num_received=" << nread );
               }
 
-            const int numBytes = 32;
+            const uint32_t fpgaPayloadLengthHeaderSize = 4; // length header added by FPGA
+            const int numBytes = 32; // number of bytes to print out
             char buffer [numBytes*2+1];
 
             switch (msgType)
@@ -347,7 +401,7 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
 
                 for(int j = 0; j < numBytes; j++)
                   {
-                    sprintf(&buffer[2*j], "%02X", phyUlschRxInd.ulschMacPduRxBody.macPdu[j]);
+                    sprintf(&buffer[2*j], "%02X", phyUlschRxInd.ulschMacPduRxBody.macPdu[fpgaPayloadLengthHeaderSize+j]);
                   }
                 NI_LOG_DEBUG ("UlschRxInd received with" <<
                               " SFN: " << phyUlschRxInd.subMsgHdr.sfn <<
@@ -362,25 +416,39 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
                     if (phyUlschRxInd.ulschMacPduRxBody.crcResult == 1)
                       {
                         // call function for rx packet processing
-                        const uint32_t fpgaPayloadLengthHeaderSize = 4; // added by FPGA
                         if (phyUlschRxInd.ulschMacPduRxBody.macPduSize >= fpgaPayloadLengthHeaderSize)
                           {
                             uint32_t fpgaPayloadLength = 0;
-                            for (int i = 0; i < fpgaPayloadLengthHeaderSize; ++i) {
-                                fpgaPayloadLength |= (phyUlschRxInd.ulschMacPduRxBody.macPdu[i] << i*8);
-                            }
-                            NI_LOG_DEBUG("fpgaPayloadLength: " << fpgaPayloadLength);
-                            const bool callbackValid = (m_niApiDataEndOkCallback != MakeNullCallback< bool, uint8_t* >());
-                            if (callbackValid && m_ns3Running)
+                            bool callbackValid = (m_niApiDataEndOkCallback != MakeNullCallback< bool, uint8_t* >());
+
+                            for (int i = 0; i < fpgaPayloadLengthHeaderSize; ++i)
                               {
+                                fpgaPayloadLength |= (phyUlschRxInd.ulschMacPduRxBody.macPdu[i] << i*8);
+                              }
+                            NI_LOG_DEBUG("fpgaPayloadLength: " << fpgaPayloadLength);
+
+                            if (fpgaPayloadLength <= 0 || fpgaPayloadLength > NI_LTE_CONST_MAX_MAC_PDU_SIZE)
+                              {
+                                NI_LOG_ERROR("PHY_ULSCH_RX_IND corrupt, wrong payload length of:" << fpgaPayloadLength);
+                                // continue without FATAL error and system stop
+                                NI_LOG_CONSOLE_INFO("PHY_ULSCH_RX_IND corrupt");
+                              }
+                            else if (callbackValid && m_ns3Running)
+                              {
+                                NI_LOG_NONE("Start NS3 UL Rx processing");
                                 // TODO-NI: handover payload length to upper layers?
                                 m_niApiDataEndOkCallback((uint8_t*)&phyUlschRxInd.ulschMacPduRxBody.macPdu[fpgaPayloadLengthHeaderSize]);
+                                NI_LOG_NONE("Finished NS3 UL Rx processing");
                               }
                           }
                         else
                           {
-                            NI_LOG_FATAL("PHY_ULSCH_RX_IND corrupt");
+                            NI_LOG_FATAL("PHY_ULSCH_RX_IND corrupt, MAC PDU smaller than fpgaPayloadLength header");
                           }
+                      }
+                    else
+                      {
+                        m_numCrcFails++;
                       }
                   }
                 else
@@ -409,18 +477,27 @@ NiPipeTransport::ReceiveCnfAndRxInd(void)
                   {
                     if (phyDlschRxInd.dlschMacPduRxBody.crcResult == 1)
                       {
-                        const bool callbackValid = (m_niApiDataEndOkCallback != MakeNullCallback< bool, uint8_t* >());
-                        if (callbackValid && m_ns3Running)
+                        if (phyDlschRxInd.dlschMacPduRxBody.macPduSize <= 0 ||
+                            phyDlschRxInd.dlschMacPduRxBody.macPduSize > NI_LTE_CONST_MAX_MAC_PDU_SIZE)
                           {
-                            NI_LOG_NONE("Start NS3 Rx processing");
-                            // call function for rx packet processing
-                            m_niApiDataEndOkCallback((uint8_t*)&phyDlschRxInd.dlschMacPduRxBody.macPdu);
-                            NI_LOG_NONE("Finished NS3 Rx processing");
+                            NI_LOG_FATAL("PHY_DLSCH_RX_IND corrupt, wrong payload length of:" << phyDlschRxInd.dlschMacPduRxBody.macPduSize);
+                          }
+                        else
+                          {
+                            bool callbackValid = (m_niApiDataEndOkCallback != MakeNullCallback< bool, uint8_t* >());
+                            if (callbackValid && m_ns3Running)
+                              {
+                                NI_LOG_NONE("Start NS3 DL Rx processing");
+                                // call function for rx packet processing
+                                m_niApiDataEndOkCallback((uint8_t*)&phyDlschRxInd.dlschMacPduRxBody.macPdu);
+                                NI_LOG_NONE("Finished NS3 DL Rx processing");
+                              }
                           }
                       }
-                    else{
+                    else
+                      {
                         m_numCrcFails++;
-                    }
+                      }
                   }
                 else
                   {
@@ -613,7 +690,7 @@ int32_t NiPipeTransport::CreateAndSendFiveGDlTxConfigReqMsg(
     uint32_t scs
 )
 {
-  NI_LOG_DEBUG ("Create DL Config REQ Message with" <<
+  NI_LOG_DEBUG ("Create 5G DL Tx Config REQ Message with" <<
                 " sfn: " << sfn <<
                 ", tti: " << tti <<
                 ", scs: " << scs);
@@ -653,7 +730,7 @@ int32_t NiPipeTransport::CreateAndSendFiveGDlRxConfigReqMsg(
     uint32_t scs
 )
 {
-  NI_LOG_DEBUG ("Create 5G DL Config REQ Message with" <<
+  NI_LOG_DEBUG ("Create 5G DL Rx Config REQ Message with" <<
                 " sfn: " << sfn <<
                 ", tti: " << tti <<
                 ", scs: " << scs);
@@ -694,7 +771,7 @@ int32_t NiPipeTransport::CreateAndSendFiveGUlTxConfigReqMsg(
     uint32_t scs
 )
 {
-  NI_LOG_DEBUG ("Create DL Config REQ Message with" <<
+  NI_LOG_DEBUG ("Create 5G UL Tx Config REQ Message with" <<
                 " sfn: " << sfn <<
                 ", tti: " << tti <<
                 ", scs: " << scs);
@@ -711,7 +788,7 @@ int32_t NiPipeTransport::CreateAndSendFiveGUlTxConfigReqMsg(
   phyFiveGUlTxConfigReq.subMsgHdr.sfn                        = GetTimingIndSfn(); //TODO-NI: replace by caller Sfn
   phyFiveGUlTxConfigReq.subMsgHdr.tti                        = GetTimingIndTti(); //TODO-NI: replace by caller Tti
   // update dlsch config
-  phyFiveGUlTxConfigReq.FiveGUlTxConfigBody.scs                = scs;
+  phyFiveGUlTxConfigReq.FiveGUlTxConfigBody.scs              = scs;
 
 
   // serialize dl config request message
@@ -735,7 +812,7 @@ int32_t NiPipeTransport::CreateAndSendFiveGUlRxConfigReqMsg(
     uint32_t scs
 )
 {
-  NI_LOG_DEBUG ("Create DL Config REQ Message with" <<
+  NI_LOG_DEBUG ("Create 5G UL Rx Config REQ Message with" <<
                 " sfn: " << sfn <<
                 ", tti: " << tti <<
                 ", scs: " << scs);

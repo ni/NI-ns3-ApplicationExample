@@ -244,8 +244,8 @@ namespace ns3
   {
     // set thread priority
     NiUtils::SetThreadPrioriy(m_niApiRxThreadPriority);
-    NiUtils::AddThreadInfo (pthread_self(), (m_context + " NiUdpTransport Rx thread"));
-    NI_LOG_DEBUG(m_context << " - UDP Rx thread with id:" <<  pthread_self() << " started");
+    NiUtils::AddThreadInfo (m_context + " UdpRx Thread");
+    NI_LOG_DEBUG(m_context << " - UDP Rx thread with id:" <<  m_niApiRxThread->Self() << " started");
 
     // TODO-NI set thread priority!
     //NiUtils::SetThreadPrioriy(...);

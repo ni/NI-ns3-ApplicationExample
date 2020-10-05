@@ -200,6 +200,11 @@ public:
    */
   bool GetUseInSequenceDelivery() const;
 
+  /**
+     * Transmit packet over LWA/LWIP
+     */
+  void TransmitOverLwaLwip(LteRlcSapProvider::TransmitPdcpPduParameters params, Ptr<Packet> p);
+
 protected:
   // Interface provided to upper RRC entity
   virtual void DoTransmitPdcpSdu (Ptr<Packet> p);
@@ -233,6 +238,15 @@ protected:
 
   EpcX2PdcpProvider* m_epcX2PdcpProvider;
   EpcX2PdcpUser* m_epcX2PdcpUser;
+
+  // lwa/lwip changes
+  TracedCallback<Ptr<const Packet> >m_pdcptxtrace ;
+
+    uint32_t pdcp_decisionlwa;
+    uint32_t pdcp_decisionlwip;
+    uint32_t pdcp_decisionDc;
+    uint32_t m_packetCounter = 0;
+    uint32_t m_dcLwaLwipSwitch = 0;  // switch between DC and LWA/LWIP when both of them are enabled 0->use DC, 1->use LWA/LWIP
 
 private:
   /**

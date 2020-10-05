@@ -22,6 +22,7 @@
 #pragma once
 
 #include <cstdint>       // integer types
+#include "ns3/ni-l1-l2-api.h"
 #include "ni-l1-l2-api-lte.h"
 
 namespace ns3 {

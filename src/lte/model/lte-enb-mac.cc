@@ -38,6 +38,7 @@
 #include <ns3/lte-common.h>
 
 #include "ns3/ni-logging.h"
+#include "ns3/ni-lte-constants.h"
 
 namespace ns3 {
 
@@ -1013,8 +1014,8 @@ LteEnbMac::DoSchedDlConfigInd (FfMacSchedSapUser::SchedDlConfigIndParameters ind
                   uint32_t rlcPduSize = 0;
 
                   if (m_enbPhySapProvider->GetNiApiEnable ()) {
-                    // adapt TB size for control channel overhead (150 bytes)
-                    const uint32_t ctrlChannelOverhead = 150;
+                    // adapt TB size for control channel overhead
+                    const uint32_t ctrlChannelOverhead = NI_LTE_CONST_MAX_NS3_CTRL_MSG_SIZE;
                     if (macPduSize <= ctrlChannelOverhead) {
                         NI_LOG_FATAL("eNB MAC DL - PDU Size smaller than " << ctrlChannelOverhead << " Byte");
                     } else {

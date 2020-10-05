@@ -171,6 +171,8 @@ main (int argc, char *argv[])
    std::string dataRate = "60Mbps";
    // TCP application variant type
    std::string tcpVariant = "TcpNewReno";
+   // dual connectivity configuration
+   uint32_t dcactivate=1; // MeNB/UE=0, MeNB/UE+SeNB/UE=1 (split bearer), SeNB/UE=2
 
   // Command line arguments
   CommandLine cmd;
@@ -358,7 +360,7 @@ main (int argc, char *argv[])
   const int niRemoteControlPriority = ns3Priority - 11;
 
   // adding thread ID of main NS3 thread for possible troubleshooting
-  NiUtils::AddThreadInfo(pthread_self(), "NS3 main thread");
+  NiUtils::AddThreadInfo("NS3 main thread");
 
   // install signal handlers in order to print debug information to std::out in case of an error
   NiUtils::InstallSignalHandler();
@@ -473,6 +475,10 @@ main (int argc, char *argv[])
    Config::SetDefault ("ns3::DaliLteHelper::UsePdschForCqiGeneration", BooleanValue (false));
    // Use simple round robin scheduler here (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
    Config::SetDefault ("ns3::DaliLteHelper::Scheduler", StringValue ("ns3::RrFfMacScheduler"));
+   // Switch to enable/disable DC functionality
+   Config::SetDefault ("ns3::DaliEnbPdcp::PDCPDecDc", UintegerValue(dcactivate));
+   // Switch to allow LWA/LWIP when DC is enabled
+   Config::SetDefault ("ns3::DaliEnbPdcp::DcLwaLwipSwitch", UintegerValue(0));
    // Set the adpative coding and modulation model to Piro as this is the simpler one
    Config::SetDefault ("ns3::LteAmc::AmcModel", EnumValue (LteAmc::PiroEW2010));
    // Disable HARQ as this not support by PHY and not implemented in NI API
@@ -486,6 +492,7 @@ main (int argc, char *argv[])
    //Config::SetDefault ("ns3::LteEnbRrc::ConnectionRequestTimeoutDuration", StringValue ("+60000000.0ns"));
 
    // update remote control database related parameters
+   g_RemoteControlEngine.GetPdb()->setParameterDcDecVariable(dcactivate);
    g_RemoteControlEngine.GetPdb()->setParameterManualLteUeChannelSinrEnable(false);
    g_RemoteControlEngine.GetPdb()->setParameterLteUeChannelSinr(niChSinrValueDb);
 
@@ -837,7 +844,10 @@ main (int argc, char *argv[])
    std::cout << "[#] End simulation" << std::endl << std::endl;
 
    // check received packets
-   if ((daliTransportProtocol == "NI") && !niApiEnableTapBridge && ((daliLinkDirection == "DOWNLINK" && (niApiDevMode == "NIAPI_TS" || niApiDevMode == "NIAPI_MTS")) || (daliLinkDirection == "UPLINK" && (niApiDevMode == "NIAPI_BS" || niApiDevMode == "NIAPI_MBS")) || (niApiDevMode == "NIAPI_BSTS")||(niApiDevMode == "NIAPI_MBSTS")))
+   if (!niApiEnableTapBridge && (daliTransportProtocol == "NI") &&
+       ((daliLinkDirection == "DOWNLINK" && (niApiDevMode == "NIAPI_TS" || niApiDevMode == "NIAPI_MTS")) ||
+        (daliLinkDirection == "UPLINK" && (niApiDevMode == "NIAPI_BS" || niApiDevMode == "NIAPI_MBS")) ||
+        (niApiDevMode == "NIAPI_BSTS")||(niApiDevMode == "NIAPI_MBSTS")))
      {
        NI_LOG_CONSOLE_INFO ("Received packets: " << appServer->GetReceived()
                             << " / Lost packets: " << packetNum-appServer->GetReceived()

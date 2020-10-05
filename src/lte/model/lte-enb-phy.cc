@@ -743,9 +743,14 @@ LteEnbPhy::StartSubFrame (void)
       // ...
       if (m_niLtePhyModule->GetNiApiDevType() == NIAPI_ENB &&
           m_niLtePhyModule->GetNiApiLoopbackEnable() == false
-		  && m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)  //DALI: fake nodes should not access NI API
+          && m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)  //DALI: fake nodes should not access NI API
         {
-          m_niLtePhyModule->NiStartSubframe(m_nrFrames, m_nrSubFrames, Seconds (GetTti ()).GetMicroSeconds(), 0);
+          bool niStartSubframeSuccess = m_niLtePhyModule->NiStartSubframe(m_nrFrames, m_nrSubFrames, Seconds (GetTti ()).GetMicroSeconds(), 0);
+          if (niStartSubframeSuccess == false)
+            {
+              NI_LOG_WARN("Stop eNB sub frame processing, in case NI PHY synchronization was not successful");
+              return;
+            }
         }
     }
 

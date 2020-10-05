@@ -37,6 +37,7 @@ class VirtualNetDevice;
 class EpcSgwPgwApplication;
 class EpcX2;
 class EpcMme;
+class LteUeNetDevice;
 
 /**
  * \ingroup lte
@@ -160,7 +161,15 @@ public:
   {
   };
 
-
+  /**
+   * New for DALI Dual Connectivity
+   * Look up for UE net device from UE node
+   *
+   * \param ue the node to look up
+   */
+  virtual Ptr<LteUeNetDevice> LookUpUeNetDevice (Ptr<Node> ue)
+  {
+  };
 };
 
 

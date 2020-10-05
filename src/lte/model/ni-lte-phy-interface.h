@@ -40,23 +40,23 @@ namespace ns3
 
   // device identifier
   typedef enum {
-    NS3_ENB  = 0,
-    NS3_UE = 1,
-	NS3_NOAPI = 3,   //DALI: used to disallow NI API installation/operation in DALI fake nodes
+    NS3_ENB   = 0,
+    NS3_UE    = 1,
+    NS3_NOAPI = 3,   //DALI: used to disallow NI API installation/operation in DALI fake nodes
   } Ns3LteDevType_t;
 
   // device identifier
   typedef enum {
     NIAPI_ENB  = 0,
-    NIAPI_UE = 1,
-    NIAPI_ALL = 2,
+    NIAPI_UE   = 1,
+    NIAPI_ALL  = 2,
     NIAPI_NONE = 3,
   } NiApiDevType_t;
 
   // packet identifier
   typedef enum {
-    NIAPI_DL_PACKET  = 0,
-    NIAPI_UL_PACKET  = 1,
+    NIAPI_DL_PACKET    = 0,
+    NIAPI_UL_PACKET    = 1,
     NIAPI_UNDEF_PACKET = 2, //undefined packet type
   } NiApiPacketType_t ;
 
@@ -66,6 +66,7 @@ namespace ns3
     NIAPI_SCS_30_KHZ   = 1,
     NIAPI_SCS_60_KHZ   = 2,
     NIAPI_SCS_120_KHZ  = 3,
+    NIAPI_SCS_NUM      = 4,
   } NiApiScs_t ;
 
   typedef Callback< void, uint16_t, uint8_t, bool > NiPhyTimingIndEndOkCallback;
@@ -190,7 +191,7 @@ namespace ns3
 
     bool NiStartTxCtrlDataFrame (Ptr<PacketBurst> packetBurst, std::list<Ptr<LteControlMessage> > ctrlMsgList, uint32_t m_nrFrames, uint32_t m_nrSubFrames);
 
-    void NiStartSubframe (uint32_t nrFrames, uint32_t nrSubFrames, int64_t ns3TtiTimingUs, uint64_t ueToEnbSfoffset);
+    bool NiStartSubframe (uint32_t nrFrames, uint32_t nrSubFrames, int64_t ns3TtiTimingUs, uint64_t ueToEnbSfoffset);
 
   private:
 
@@ -283,14 +284,14 @@ namespace ns3
     Ptr<NiPipeTransport> m_niPipeTransport;
     Ptr<NiLteSdrTimingSync> m_niLteSdrTimingSync;
 
-    // default ip address / port configuration for station #1
-    std::string m_niUdpSta1RemoteIpAddrTx="127.0.0.1";
-    std::string m_niUdpSta1RemotePortTx="12802";
-    std::string m_niUdpSta1LocalPortRx="12801";
-    // default ip address / port configuration for station #2
-    std::string m_niUdpSta2RemoteIpAddrTx="127.0.0.1";
-    std::string m_niUdpSta2RemotePortTx="12801";
-    std::string m_niUdpSta2LocalPortRx="12802";
+    // default ip address / port configuration for eNB
+    std::string m_niApiLteEnbRemoteIpAddrTx;
+    std::string m_niApiLteEnbRemotePortTx;
+    std::string m_niApiLteEnbLocalPortRx;
+    // default ip address / port configuration for UE
+    std::string m_niApiLteUeRemoteIpAddrTx;
+    std::string m_niApiLteUeRemotePortTx;
+    std::string m_niApiLteUeLocalPortRx;
 
     int64_t m_sfnSfOffset;
     uint64_t m_lastTimingIndTimeUs;

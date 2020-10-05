@@ -80,6 +80,36 @@ namespace ns3
                      UintegerValue (100),
                      MakeUintegerAccessor (&NiLtePhyInterface::m_niCqiReportPeriodMs),
                      MakeUintegerChecker<uint8_t> ())
+      .AddAttribute ("niApiLteEnbRemoteIpAddrTx",
+                     "Remote IP address for UDP socket on eNB",
+                     StringValue (""),
+                     MakeStringAccessor (&NiLtePhyInterface::m_niApiLteEnbRemoteIpAddrTx),
+                     MakeStringChecker ())
+      .AddAttribute ("niApiLteEnbRemotePortTx",
+                     "Remote port for UDP socket on eNB",
+                     StringValue (""),
+                     MakeStringAccessor (&NiLtePhyInterface::m_niApiLteEnbRemotePortTx),
+                     MakeStringChecker ())
+      .AddAttribute ("niApiLteEnbLocalPortRx",
+                     "Local RX port of eNB",
+                     StringValue (""),
+                     MakeStringAccessor (&NiLtePhyInterface::m_niApiLteEnbLocalPortRx),
+                     MakeStringChecker ())
+      .AddAttribute ("niApiLteUeRemoteIpAddrTx",
+                     "Remote IP address for UDP socket on UE",
+                     StringValue (""),
+                     MakeStringAccessor (&NiLtePhyInterface::m_niApiLteUeRemoteIpAddrTx),
+                     MakeStringChecker ())
+      .AddAttribute ("niApiLteUeRemotePortTx",
+                     "Remote port for UDP socket on UE",
+                     StringValue (""),
+                     MakeStringAccessor (&NiLtePhyInterface::m_niApiLteUeRemotePortTx),
+                     MakeStringChecker ())
+      .AddAttribute ("niApiLteUeLocalPortRx",
+                     "Local RX port of UE",
+                     StringValue (""),
+                     MakeStringAccessor (&NiLtePhyInterface::m_niApiLteUeLocalPortRx),
+                     MakeStringChecker ())
       .AddAttribute ("enableNiApi",
                      "Enable NI API",
                      BooleanValue (false),
@@ -90,12 +120,12 @@ namespace ns3
        //Sub-Carrier Spacing.
       .AddAttribute ("niDlScs",
                      "Desired subcarrier spacing for the downlink. 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz",
-                     UintegerValue (NIAPI_SCS_15_KHZ),
+                     UintegerValue (NiApiScs_t::NIAPI_SCS_15_KHZ),
                      MakeUintegerAccessor (&NiLtePhyInterface::SetNiDlSCSValue),
                      MakeUintegerChecker<uint32_t> ())
       .AddAttribute ("niUlScs",
                      "Desired subcarrier spacing for the uplink. 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz",
-                     UintegerValue (NIAPI_SCS_15_KHZ),
+                     UintegerValue (NiApiScs_t::NIAPI_SCS_15_KHZ),
                      MakeUintegerAccessor (&NiLtePhyInterface::SetNiUlSCSValue),
                      MakeUintegerChecker<uint32_t> ())
       .AddAttribute ("niApiLte5gEnabled",
@@ -125,9 +155,9 @@ namespace ns3
 
   NiLtePhyInterface::NiLtePhyInterface (Ns3LteDevType_t ns3DevType)
   : m_ns3DevType(ns3DevType),
-    m_niApiDevType(NIAPI_ENB),
-    m_enableNiApi(0),
-    m_enableNiApiLoopback(0),
+    m_niApiDevType(NiApiDevType_t::NIAPI_ENB),
+    m_enableNiApi(false),
+    m_enableNiApiLoopback(false),
     m_initializationDone(false),
     m_mibReceived(false),
     m_sfnSynced(false),
@@ -144,13 +174,14 @@ namespace ns3
     m_firstPhyTimingInd(false),
     m_sfnSfOffset(0),
     m_lastTimingIndTimeUs(0),
-    m_dlscs(NIAPI_SCS_15_KHZ), //DL SCS for 5G API
-    m_ulscs(NIAPI_SCS_15_KHZ), //UL SCS for 5G API
+    m_dlscs(NiApiScs_t::NIAPI_SCS_15_KHZ), //DL SCS for 5G API
+    m_ulscs(NiApiScs_t::NIAPI_SCS_15_KHZ), //UL SCS for 5G API
     m_ApiLte5Genabled(false), //5G API enabled variable
     m_ScsSwitchTargetSfn(0),//SFN to do next SCS switch
-    m_niLteSdrTimingSync(CreateObject <NiLteSdrTimingSync> ())
+    m_niLteSdrTimingSync(CreateObject <NiLteSdrTimingSync> ()),
+    m_niCqiReportPeriodMs(100)
   {
-
+    SetNiChannelSinrValue(30.0);
   }
 
   NiLtePhyInterface::~NiLtePhyInterface ()
@@ -163,7 +194,7 @@ namespace ns3
   NiLtePhyInterface::DoDispose (void)
   {
     if (m_enableNiApi && m_initializationDone
-    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+        && m_ns3DevType != Ns3LteDevType_t::NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
       {
         if (m_enableNiApiLoopback)
           {
@@ -191,14 +222,14 @@ namespace ns3
   void
   NiLtePhyInterface::DoInitialize (void)
   {
-    NI_LOG_DEBUG(this << "NiLtePhyInterface::DoInitialize with " << 
+    NI_LOG_DEBUG(this << "NiLtePhyInterface::DoInitialize with " <<
                         " m_enableNiApi:" << m_enableNiApi <<
                         ", m_ns3DevType:" << m_ns3DevType <<
                         ", m_niApiDevType:" << m_niApiDevType <<
                         ", m_enableNiApiLoopback:" << m_enableNiApiLoopback);
 
     if (m_enableNiApi && !m_initializationDone
-    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+        && m_ns3DevType != Ns3LteDevType_t::NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
       {
         if (m_enableNiApiLoopback)
           {
@@ -214,7 +245,7 @@ namespace ns3
           }
 
         // in the case of an ue schedule first call for cqi report generation
-        if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE))
+        if (((m_niApiDevType==NiApiDevType_t::NIAPI_UE)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE))
           {
             Simulator::Schedule(Seconds(1), &NiLtePhyInterface::NiGenerateCqiReport, this);
           }
@@ -259,7 +290,7 @@ namespace ns3
 
     // enable udp transport layer only if ni api is enabled
     if (m_enableNiApi && m_enableNiApiLoopback
-    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+        && m_ns3DevType != Ns3LteDevType_t::NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
     {
         // deriving thread priorities from ns3 main process
         int ns3Priority = NiUtils::GetThreadPrioriy(); // -60 htop value
@@ -267,18 +298,18 @@ namespace ns3
         // create udp transport object
         m_niUdpTransport = CreateObject <NiUdpTransport> ("LTE");
         // create udp tx/rx sockets for enb config
-        if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
+        if (((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)){
             // set callback function for rx packets
             m_niUdpTransport->SetNiApiDataEndOkCallback (MakeCallback (&NiLtePhyInterface::NiStartRxCtrlDataFrame, this));
-            m_niUdpTransport->OpenUdpSocketTx(m_niUdpSta1RemoteIpAddrTx, m_niUdpSta1RemotePortTx);
-            m_niUdpTransport->OpenUdpSocketRx(m_niUdpSta1LocalPortRx, rxThreadPriority);
+            m_niUdpTransport->OpenUdpSocketTx(m_niApiLteEnbRemoteIpAddrTx, m_niApiLteEnbRemotePortTx);
+            m_niUdpTransport->OpenUdpSocketRx(m_niApiLteEnbLocalPortRx, rxThreadPriority);
         }
         // create udp tx/rx sockets for ue config
-        else if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE)) {
+        else if (((m_niApiDevType==NiApiDevType_t::NIAPI_UE)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)) {
             // set callback function for rx packets
             m_niUdpTransport->SetNiApiDataEndOkCallback (MakeCallback (&NiLtePhyInterface::NiStartRxCtrlDataFrame, this));
-            m_niUdpTransport->OpenUdpSocketTx(m_niUdpSta2RemoteIpAddrTx, m_niUdpSta2RemotePortTx);
-            m_niUdpTransport->OpenUdpSocketRx(m_niUdpSta2LocalPortRx, rxThreadPriority);
+            m_niUdpTransport->OpenUdpSocketTx(m_niApiLteUeRemoteIpAddrTx, m_niApiLteUeRemotePortTx);
+            m_niUdpTransport->OpenUdpSocketRx(m_niApiLteUeLocalPortRx, rxThreadPriority);
         }
         else {
             // do not create udp tx/rx sockets - for virtual enb/ ue
@@ -296,16 +327,16 @@ namespace ns3
 
     // de-init udp transport layer only if ni api was enabled
     if (m_enableNiApi && m_enableNiApiLoopback
-    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+    		&& m_ns3DevType != Ns3LteDevType_t::NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
     {
-        if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
+        if (((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)){
             m_niUdpTransport->CloseUdpSocketTx();
             m_niUdpTransport->CloseUdpSocketRx();
             // remove call back
             m_niUdpTransport->SetNiApiDataEndOkCallback (MakeNullCallback< bool, uint8_t* >());
         }
         // close udp tx/rx sockets for ue config
-        else if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE)) {
+        else if (((m_niApiDevType==NiApiDevType_t::NIAPI_UE)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)) {
             m_niUdpTransport->CloseUdpSocketTx();
             m_niUdpTransport->CloseUdpSocketRx();
             // remove call back
@@ -325,11 +356,11 @@ namespace ns3
   {
     // enable pipe transport layer only if ni api is enabled
     if (m_enableNiApi && !m_enableNiApiLoopback
-    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+        && m_ns3DevType != Ns3LteDevType_t::NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
     {
         //  check device configuration
-        if ( ((m_niApiDevType==NIAPI_ENB)&&(m_ns3DevType==NS3_ENB)) ||
-            ((m_niApiDevType==NIAPI_UE)&&(m_ns3DevType==NS3_UE)) )
+        if ( ((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)) ||
+            ((m_niApiDevType==NiApiDevType_t::NIAPI_UE)&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)) )
           {
             // deriving thread priorities from ns3 main process
             int ns3Priority = NiUtils::GetThreadPrioriy();
@@ -359,11 +390,11 @@ namespace ns3
   {
     // de-init pipe transport layer only if ni api is enabled
     if (m_enableNiApi && !m_enableNiApiLoopback
-    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+        && m_ns3DevType != Ns3LteDevType_t::NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
     {
         //  check device configuration
-        if ( ((m_niApiDevType==NIAPI_ENB)&&(m_ns3DevType==NS3_ENB)) ||
-            ((m_niApiDevType==NIAPI_UE)&&(m_ns3DevType==NS3_UE)) )
+        if ( ((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)) ||
+            ((m_niApiDevType==NiApiDevType_t::NIAPI_UE)&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)) )
           {
             // de-init transport layer for LTE
             m_niPipeTransport->DeInit();
@@ -383,11 +414,11 @@ namespace ns3
   {
     // de-init SDR timing sync only if ni api is enabled
     if (m_enableNiApi && !m_enableNiApiLoopback
-    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+        && m_ns3DevType != Ns3LteDevType_t::NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
     {
         //  check device configuration
-        if ( ((m_niApiDevType==NIAPI_ENB)&&(m_ns3DevType==NS3_ENB)) ||
-            ((m_niApiDevType==NIAPI_UE)&&(m_ns3DevType==NS3_UE)) )
+        if ( ((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)) ||
+            ((m_niApiDevType==NiApiDevType_t::NIAPI_UE)&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)) )
           {
             // align simulator against FPGA synchronized wall clock
             m_niLteSdrTimingSync->AttachWallClock();
@@ -403,11 +434,11 @@ namespace ns3
   {
     // enable pipe transport layer only if ni api is enabled
     if (m_enableNiApi && !m_enableNiApiLoopback
-    		&& m_ns3DevType != NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
+        && m_ns3DevType != Ns3LteDevType_t::NS3_NOAPI) ////DALI: fake nodes should not proceed with Ni Api enabled
     {
         //  check device configuration
-        if ( ((m_niApiDevType==NIAPI_ENB)&&(m_ns3DevType==NS3_ENB)) ||
-            ((m_niApiDevType==NIAPI_UE)&&(m_ns3DevType==NS3_UE)) )
+        if ( ((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)) ||
+            ((m_niApiDevType==NiApiDevType_t::NIAPI_UE)&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)) )
           {
             // TODO-NI: detach from wall clock
             //m_niLteSdrTimingSync->DetachWallClock();
@@ -424,17 +455,15 @@ namespace ns3
     NI_LOG_DEBUG(this << " - Set NI LTE API Mode to " << type);
 
     if (type == "NIAPI_ENB")
-      m_niApiDevType = NIAPI_ENB;
+      m_niApiDevType = NiApiDevType_t::NIAPI_ENB;
     else if (type == "NIAPI_UE")
-      m_niApiDevType = NIAPI_UE;
+      m_niApiDevType = NiApiDevType_t::NIAPI_UE;
     else if (type == "NIAPI_ALL")
-      m_niApiDevType = NIAPI_ALL;
+      m_niApiDevType = NiApiDevType_t::NIAPI_ALL;
     else if (type == "NIAPI_NONE")
-      m_niApiDevType = NIAPI_NONE;
+      m_niApiDevType = NiApiDevType_t::NIAPI_NONE;
     else
       NI_LOG_FATAL("\nNiLtePhyInterface::m_niApiDevType: Unrecognizable option for running the program in NI API device mode");
-
-
 
     return;
   }
@@ -458,7 +487,6 @@ namespace ns3
 
       m_enableNiApi = enable;
       this->DoInitialize();
-
   }
 
   bool
@@ -504,9 +532,21 @@ namespace ns3
    void
    NiLtePhyInterface::SetNiDlSCSValue (NiApiScs_t scs)
    {
-     NI_LOG_DEBUG(this << " - Set SCS value to " << scs << "kHz");
-
-     m_dlscs  = scs;
+     switch (scs) {
+       case ::ns3::NiApiScs_t::NIAPI_SCS_15_KHZ:
+       case ::ns3::NiApiScs_t::NIAPI_SCS_30_KHZ:
+       case ::ns3::NiApiScs_t::NIAPI_SCS_60_KHZ:
+       case ::ns3::NiApiScs_t::NIAPI_SCS_120_KHZ:
+         NI_LOG_DEBUG(this << " - Set DL SCS value to " << scs);
+         // set member
+         m_dlscs = scs;
+         // set value also in remote control data base
+         g_RemoteControlEngine.GetPdb()->setParameterGfdmDlScs((uint32_t) scs);
+         break;
+       default:
+         NI_LOG_FATAL(this << " - DL SCS out of range: " << scs);
+         break;
+     }
    }
 
    NiApiScs_t
@@ -518,9 +558,21 @@ namespace ns3
    void
     NiLtePhyInterface::SetNiUlSCSValue (NiApiScs_t scs)
     {
-      NI_LOG_DEBUG(this << " - Set SCS value to " << scs << "kHz");
-
-      m_ulscs  = scs;
+     switch (scs) {
+       case ::ns3::NiApiScs_t::NIAPI_SCS_15_KHZ:
+       case ::ns3::NiApiScs_t::NIAPI_SCS_30_KHZ:
+       case ::ns3::NiApiScs_t::NIAPI_SCS_60_KHZ:
+       case ::ns3::NiApiScs_t::NIAPI_SCS_120_KHZ:
+         NI_LOG_DEBUG(this << " - Set UL SCS value to " << scs);
+         // set member
+         m_ulscs  = scs;
+         // set value also in remote control data base
+         g_RemoteControlEngine.GetPdb()->setParameterGfdmUlScs((uint32_t) scs);
+         break;
+       default:
+         NI_LOG_FATAL(this << " - UL SCS out of range: " << scs);
+         break;
+     }
     }
 
     NiApiScs_t
@@ -622,72 +674,103 @@ namespace ns3
   NiLtePhyInterface::NiStartDlTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset)
   {
     // sanity checks
+    if (*payloadDataBufOffset <= 0) {
+        NI_LOG_FATAL (this << " - DL: payloadDataBufOffset <= 0");
+        return false;
+    }
     if (*payloadDataBufOffset > m_tbsSize) {
         NI_LOG_FATAL (this << " - DL: payloadDataBufOffset(" << *payloadDataBufOffset << ") > m_tbsSize(" << m_tbsSize << ") "
                       << m_mcs << ", " << m_rbBitmap);
+        return false;
     }
 
     // chose api transport layer
     if (m_enableNiApiLoopback){ // send message over udp loopback channel to rx station
         m_niUdpTransport->SendToUdpSocketTx(payloadDataBuffer, m_tbsSize);
     } else { // send message over pipe connection to lte app framework
-    //Enables/disables the 5G message in the DL TX message chain
-    if(m_ApiLte5Genabled){
-    // create & send an ni api 5G downlink tx control request message
-        if (m_niPipeTransport->CreateAndSendFiveGDlTxConfigReqMsg(m_sfn, m_tti, m_dlscs) < 0){
-            NI_LOG_FATAL (this << " - DL: Could not send 5G DL Config Request Message");
+        //Enables/disables the 5G message in the DL TX message chain
+        if(m_ApiLte5Genabled){
+            // create & send an ni api 5G downlink tx control request message
+            if (m_niPipeTransport->CreateAndSendFiveGDlTxConfigReqMsg(m_sfn, m_tti, GetNiDlSCS()) < 0){
+                NI_LOG_FATAL (this << " - DL: Could not send 5G DL Config Request Message");
+                return false;
+            }
         }
-    }
-    // create & send an ni api downlink tx control request message
+        // create & send an ni api downlink tx control request message
         if (m_niPipeTransport->CreateAndSendDlTxConfigReqMsg(m_sfn, m_tti, m_rbBitmap, m_rnti, m_mcs, m_tbsSize) < 0){
             NI_LOG_FATAL (this << " - DL: Could not send DL Config Request Message");
+            return false;
         }
         // create & send an ni api downlink tx payload request message
         if (m_niPipeTransport->CreateAndSendDlTxPayloadReqMsg(m_sfn, m_tti, payloadDataBuffer, m_tbsSize) < 0){
             NI_LOG_FATAL (this << " - DL: Could not send DL Payload Request Message");
+            return false;
         }
     }
     // call rx function directly - useful for debugging
     //NiStartRxCtrlDataFrame((uint8_t*)&payloadDataBuffer);
-
+    return true;
   }
 
 //******************** 5G Message setting and sending functions.
-//Note: The function related to DL TX was added directly on NiLtePhyInterface::NiStartDlTxApiSend
-// as the API defined the sequence of messages as such, and it streamlined the implementation.
-bool
-   NiLtePhyInterface::NiStartDlRxApiSend ()
-   {
-  // create & send an ni api 5G downlink rx control request message
-     if (m_niPipeTransport->CreateAndSendFiveGDlRxConfigReqMsg(m_sfn, m_tti, m_dlscs) < 0){
-         NI_LOG_FATAL (this << " - DL: Could not send 5G DL Rx Config Request Message");
-     }
-   }
+  //Note: The function related to DL TX was added directly on NiLtePhyInterface::NiStartDlTxApiSend
+  // as the API defined the sequence of messages as such, and it streamlined the implementation.
+  bool
+  NiLtePhyInterface::NiStartDlRxApiSend ()
+  {
+    // create & send an ni api 5G downlink rx control request message
+    if (m_niPipeTransport->CreateAndSendFiveGDlRxConfigReqMsg(m_sfn, m_tti, GetNiDlSCS()) < 0){
+        NI_LOG_FATAL (this << " - DL: Could not send 5G DL Rx Config Request Message");
+        return false;
+    }
+    return true;
+  }
 
-bool
-   NiLtePhyInterface::NiStartUlTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset)
-   {
+  bool
+  NiLtePhyInterface::NiStartUlTxApiSend (uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset)
+  {
+    // For GFDM PHY -> see AFW settings
+    //   UL MCS = 9
+    //   UL PRB mask = b0111111111100001111111111
+    //   UL TB size = 1572
+    // For LTE PHY -> see AFW settings
+    //   UL MCS = 9
+    //   UL PRB mask = b0111111111111111111111111
+    //   UL TB size = 1980
+    uint32_t ulTbsSize = m_ApiLte5Genabled ? 1572 : 1980;
 
-      if (*payloadDataBufOffset > m_tbsSize) {
-          NI_LOG_FATAL (this << " - DL: payloadDataBufOffset > m_tbsSize");
-      }
-      // create & send an ni api 5G uplink tx control request message
-      if (m_niPipeTransport->CreateAndSendFiveGUlTxConfigReqMsg(m_sfn, m_tti, m_ulscs) < 0){
-          NI_LOG_FATAL (this << " - UL: Could not send 5G UL Tx Config Request Message");
-      }
-      if (m_niPipeTransport->CreateAndSendUlTxPayloadReqMsg(m_sfn, m_tti, payloadDataBuffer, m_tbsSize) < 0){
-          NI_LOG_FATAL ("NiLtePhyInterface::NiStartTxCtrlDataFrame: Could not send UL Payload Req Message");
-     }
-   }
+    if (*payloadDataBufOffset <= 0) {
+        NI_LOG_FATAL (this << " - UL: payloadDataBufOffset <= 0");
+        return false;
+    }
+    if (*payloadDataBufOffset > ulTbsSize) {
+        NI_LOG_FATAL (this << " - UL: payloadDataBufOffset(" << *payloadDataBufOffset << ") > ulTbsSize(" << ulTbsSize << ")");
+        return false;
+    }
+    if (m_ApiLte5Genabled) {
+        // create & send an ni api 5G uplink tx control request message
+        if (m_niPipeTransport->CreateAndSendFiveGUlTxConfigReqMsg(m_sfn, m_tti, GetNiUlSCS()) < 0){
+            NI_LOG_FATAL (this << " - UL: Could not send 5G UL Tx Config Request Message");
+            return false;
+        }
+    }
+    if (m_niPipeTransport->CreateAndSendUlTxPayloadReqMsg(m_sfn, m_tti, payloadDataBuffer, *payloadDataBufOffset) < 0){
+        NI_LOG_FATAL ("NiLtePhyInterface::NiStartTxCtrlDataFrame: Could not send UL Payload Req Message");
+        return false;
+    }
+    return true;
+  }
 
-bool
-   NiLtePhyInterface::NiStartUlRxApiSend ()
-   {
-  // create & send an ni api 5G uplink rx control request message
-     if (m_niPipeTransport->CreateAndSendFiveGUlRxConfigReqMsg(m_sfn, m_tti, m_ulscs) < 0){
-         NI_LOG_FATAL (this << " - UL: Could not send 5G UL Rx Config Request Message");
-     }
-   }
+  bool
+  NiLtePhyInterface::NiStartUlRxApiSend ()
+  {
+    // create & send an ni api 5G uplink rx control request message
+    if (m_niPipeTransport->CreateAndSendFiveGUlRxConfigReqMsg(m_sfn, m_tti, GetNiUlSCS()) < 0){
+        NI_LOG_FATAL (this << " - UL: Could not send 5G UL Rx Config Request Message");
+        return false;
+    }
+    return true;
+  }
 //******************** End of 5G Message setting and sending functions.
 
   bool
@@ -696,11 +779,11 @@ bool
     NI_LOG_TRACE("[Trace#20],NiStartTxCtrlDataFrameStart," << ( NiUtils::GetSysTime()-g_logTraceStartSubframeTime));
 
     if ((m_nrFrames!=m_sfn)||(m_nrSubFrames!=m_tti)){
-        NI_LOG_DEBUG (this << " - SFN/TTI Counters out of sync");
+        NI_LOG_WARN (this << " - SFN/TTI Counters out of sync");
     }
 
     // packet buffer: TODO-NI: create packet buffer in transport layer object and get pointer to it
-    uint8_t  payloadDataBuffer[9500];
+    uint8_t  payloadDataBuffer[NI_COMMON_CONST_MAX_PAYLOAD_SIZE];
     // pointer to current pdu buffer offset
     uint32_t payloadDataBufOffset = 0;
     // counter of control messages
@@ -711,13 +794,18 @@ bool
     uint32_t controlMessageCntTmp     = 0;
 
     // switch between enb and ue
-    if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
+    if (((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)) {
         // downlink transmitter
+        NI_LOG_INFO("Start Downlink Tx Control and Data Processing");
 
         // create api packet header
         struct NiApiPacketHeader niApiPacketHeader;
-        niApiPacketHeader.niApiPacketType = NIAPI_DL_PACKET;
-
+        // pre-set api packet header infos and increment offset pointer for further processing
+        niApiPacketHeader.niApiPacketType = NiApiPacketType_t::NIAPI_DL_PACKET;
+        niApiPacketHeader.nrFrames        = m_sfn;
+        niApiPacketHeader.nrSubFrames     = m_tti;
+        niApiPacketHeader.cellId          = m_cellId;
+        niApiPacketHeader.rnti            = m_rnti;
         // include this as first element in pdu message
         std::memcpy(payloadDataBuffer, (uint8_t*)&niApiPacketHeader, sizeof(niApiPacketHeader));
         payloadDataBufOffset += sizeof(niApiPacketHeader);
@@ -739,9 +827,9 @@ bool
             // check if rnti specific data were included
             if (rntiMap.empty()){
                 // if not then use default dci
-                m_rbBitmap = 255; // 6 RBGs --> For GFDM change to 255 = 8PRBs
-                m_rnti     = 1;
-                m_mcs      = 5;
+                m_rbBitmap = NI_LTE_CONST_DEFAULT_DCI_PRB;
+                m_rnti     = NI_LTE_CONST_DEFAULT_DCI_RNTI;
+                m_mcs      = NI_LTE_CONST_DEFAULT_DCI_MCS;
                 GetTbs(m_mcs, m_rbBitmap, &m_tbsSize);
 
                 NI_LOG_DEBUG (this << " - DL: No UE data, use default DCI /"
@@ -753,9 +841,6 @@ bool
                               << " tbsSize=" << (uint16_t) m_tbsSize << " bytes");
 
                 // update api packet header infos
-                niApiPacketHeader.nrFrames        = m_sfn;
-                niApiPacketHeader.nrSubFrames     = m_tti;
-                niApiPacketHeader.cellId          = m_cellId;
                 niApiPacketHeader.rnti            = m_rnti;
                 niApiPacketHeader.numCtrlMsg      = controlMessageCnt;
                 niApiPacketHeader.numPaylMsg      = 0;
@@ -787,10 +872,6 @@ bool
                     NiStartTxDlCtrlFrameUc (packetBurst, ctrlMsgList, (uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset, controlMessageCnt, curRnti);
 
                     // update api packet header infos
-                    niApiPacketHeader.nrFrames        = m_sfn;
-                    niApiPacketHeader.nrSubFrames     = m_tti;
-                    niApiPacketHeader.cellId          = m_cellId;
-                    niApiPacketHeader.rnti            = m_rnti;
                     niApiPacketHeader.numCtrlMsg      = controlMessageCnt;
                     niApiPacketHeader.numPaylMsg      = paylMessageCnt;
                     // include packet header as first element in payload buffer
@@ -802,18 +883,47 @@ bool
                   } // end rnti/ue loop
             }
         } else {
+            NI_LOG_DEBUG(this << " - DL: Ctrl data not available for TTI #" << (uint16_t) m_tti << " and SFN #" << m_sfn);
             // in case of using ni lte afw send default message every tti
-            //if (!m_enableNiApiLoopback){
+            if (!m_enableNiApiLoopback)
+              {
+                // create api packet header
+                niApiPacketHeader.niApiPacketType = NiApiPacketType_t::NIAPI_UNDEF_PACKET;
+                payloadDataBufOffset += sizeof(niApiPacketHeader);
 
-            //}
+                // if not then use default dci
+                m_rbBitmap = NI_LTE_CONST_DEFAULT_DCI_PRB;
+                m_rnti     = NI_LTE_CONST_DEFAULT_DCI_RNTI;
+                m_mcs      = NI_LTE_CONST_DEFAULT_DCI_MCS;
+                GetTbs(m_mcs, m_rbBitmap, &m_tbsSize);
+
+                NI_LOG_DEBUG (this << " - DL: send dummy message with default DCI /"
+                              << " buffer offset=" << payloadDataBufOffsetTmp
+                              << " number of messages=" << 0
+                              << " rbBitmap=" << (std::bitset<32>) m_rbBitmap
+                              << " rnti=" << m_rnti
+                              << " mcs=" << (uint16_t) m_mcs
+                              << " tbsSize=" << (uint16_t) m_tbsSize << " bytes");
+
+                // update api packet header infos
+                niApiPacketHeader.rnti            = m_rnti;
+                niApiPacketHeader.numCtrlMsg      = 0;
+                niApiPacketHeader.numPaylMsg      = 0;
+                // include packet header as first element in payload buffer
+                std::memcpy(payloadDataBuffer, (uint8_t*)&niApiPacketHeader, sizeof(niApiPacketHeader));
+
+                // send mac pdu with broadcast information to all ue's
+                NiStartDlTxApiSend ((uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
+              }
         } // end if ctrl msg list
 
-    } else if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE)){
+    } else if (((m_niApiDevType==NiApiDevType_t::NIAPI_UE)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)) {
         // uplink transmitter
+        NI_LOG_INFO("Start Uplink Tx Control and Data Processing");
 
         // create api packet header
         struct NiApiPacketHeader niApiPacketHeader;
-        niApiPacketHeader.niApiPacketType = NIAPI_UL_PACKET;
+        niApiPacketHeader.niApiPacketType = NiApiPacketType_t::NIAPI_UL_PACKET;
 
         // include this as first element in pdu message
         std::memcpy(payloadDataBuffer, (uint8_t*)&niApiPacketHeader, sizeof(niApiPacketHeader));
@@ -825,6 +935,11 @@ bool
 
             // uplink control message processing
             NiStartTxUlCtrlFrame (packetBurst, ctrlMsgList, (uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset, controlMessageCnt);
+
+            if (payloadDataBufOffset > NI_LTE_CONST_MAX_NS3_CTRL_MSG_SIZE)
+              {
+                NI_LOG_FATAL("NiLtePhyInterface::NiStartTxCtrlDataFrame: size of ns-3 UL control messages over limit, size=" << payloadDataBufOffset << " count=" << controlMessageCnt);
+              }
 
         } // end if ctrl msg list
 
@@ -857,17 +972,7 @@ bool
             }
             else { // send message over pipe connection to lte app framework
               // create & send an ni api uplink tx payload request message
-                //NiStartUlTxApiSend ((uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
-
-            //enables/disables the 5G message in the UL TX chain.
-            if(m_ApiLte5Genabled){
-              if (m_niPipeTransport->CreateAndSendFiveGUlTxConfigReqMsg(m_sfn, m_tti, m_ulscs) < 0){
-                 NI_LOG_FATAL (this << " - UL: Could not send 5G  UL Tx Config Request Message");
-               }
-            }
-              if (m_niPipeTransport->CreateAndSendUlTxPayloadReqMsg(m_sfn, m_tti, (uint8_t*)&payloadDataBuffer, payloadDataBufOffset) < 0){
-                NI_LOG_FATAL ("NiLtePhyInterface::NiStartTxCtrlDataFrame: Could not send UL Payload Req Message");
-               }
+              NiStartUlTxApiSend ((uint8_t*)&payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
             }
         }
         // call rx function directly - useful for debugging
@@ -879,13 +984,12 @@ bool
     }
 
     NI_LOG_TRACE(" [Trace#21],NiStartTxCtrlDataFrameEnd," << ( NiUtils::GetSysTime()-g_logTraceStartSubframeTime));
-
+    return true;
   } // end NiStartTxCtrlDataFrame function
 
   bool
   NiLtePhyInterface::NiStartRxCtrlDataFrame (uint8_t* payloadDataBuffer)
   {
-
     // pointer to current payload buffer offset
     uint32_t payloadDataBufOffset = 0;
 
@@ -896,8 +1000,9 @@ bool
     Ptr<PacketBurst> packetBurst = Create <PacketBurst> ();
 
     // switch between enb and ue
-    if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE)){
+    if (((m_niApiDevType==NiApiDevType_t::NIAPI_UE)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)){
         // downlink receiver
+        NI_LOG_INFO("Start Downlink Rx Control and Data Processing");
 
         // create empty dl packet header
         struct NiApiPacketHeader niApiPacketHeader;
@@ -905,22 +1010,30 @@ bool
         std::memcpy((uint8_t*)&niApiPacketHeader, payloadDataBuffer, sizeof(niApiPacketHeader));
         payloadDataBufOffset += sizeof(niApiPacketHeader);
 
-        NI_LOG_DEBUG (this << " - DL: Received MAC PDU with /"
-                      << " control=" << (uint16_t) niApiPacketHeader.numCtrlMsg
-                      << " payload=" << (uint16_t) niApiPacketHeader.numPaylMsg
-                      << " SFN=" << niApiPacketHeader.nrFrames << " (" << m_sfn << ")"
-                      << " TTI=" << (uint16_t) niApiPacketHeader.nrSubFrames <<  "(" << (uint16_t) m_tti << ")"
-                      << " cellId=" << niApiPacketHeader.cellId
-                      << " RNTI=" << niApiPacketHeader.rnti);
+        if (niApiPacketHeader.niApiPacketType == NiApiPacketType_t::NIAPI_DL_PACKET)
+          {
+            NI_LOG_DEBUG (this << " - DL: Received MAC PDU with /"
+                          << " control=" << (uint16_t) niApiPacketHeader.numCtrlMsg
+                          << " payload=" << (uint16_t) niApiPacketHeader.numPaylMsg
+                          << " SFN=" << niApiPacketHeader.nrFrames << " (" << m_sfn << ")"
+                          << " TTI=" << (uint16_t) niApiPacketHeader.nrSubFrames <<  "(" << (uint16_t) m_tti << ")"
+                          << " cellId=" << niApiPacketHeader.cellId
+                          << " RNTI=" << niApiPacketHeader.rnti);
 
-        for (uint32_t rxCtrlPacketCnt = 0; rxCtrlPacketCnt < niApiPacketHeader.numCtrlMsg ; rxCtrlPacketCnt  ++){
-            // process all received downlink control messages
-            // note: when receiving a dl dci message the payload is processed directly afterwards
-            NiStartRxDlCtrlFrame (packetBurst, ctrlMsgList, payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
-        }
+            for (uint32_t rxCtrlPacketCnt = 0; rxCtrlPacketCnt < niApiPacketHeader.numCtrlMsg ; rxCtrlPacketCnt  ++){
+                // process all received downlink control messages
+                // note: when receiving a dl dci message the payload is processed directly afterwards
+                NiStartRxDlCtrlFrame (packetBurst, ctrlMsgList, payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
+            }
+          }
+        else
+          {
+            NI_LOG_DEBUG (this << " - DL: Received invalid or dummy DL Packet with type: " << std::to_string(niApiPacketHeader.niApiPacketType));
+          }
 
-    } else if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
+    } else if (((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)) {
         // uplink receiver
+        NI_LOG_INFO("Start Uplink Rx Control and Data Processing");
 
         // create empty dl packet header
         struct NiApiPacketHeader niApiPacketHeader;
@@ -928,25 +1041,30 @@ bool
         std::memcpy((uint8_t*)&niApiPacketHeader, payloadDataBuffer, sizeof(niApiPacketHeader));
         payloadDataBufOffset += sizeof(niApiPacketHeader);
 
-        NI_LOG_DEBUG (this << " - UL: Received MAC PDU with /"
-                      << " control=" << (uint16_t) niApiPacketHeader.numCtrlMsg
-                      << " payload=" << (uint16_t) niApiPacketHeader.numPaylMsg
-                      << " SFN=" << niApiPacketHeader.nrFrames << " (" << m_sfn << ")"
-                      << " TTI=" << (uint16_t) niApiPacketHeader.nrSubFrames <<  "(" << (uint16_t) m_tti << ")"
-                      << " cellId=" << niApiPacketHeader.cellId
-                      << " RNTI=" << niApiPacketHeader.rnti);
+        if (niApiPacketHeader.niApiPacketType == NiApiPacketType_t::NIAPI_UL_PACKET)
+          {
+            NI_LOG_DEBUG (this << " - UL: Received MAC PDU with /"
+                          << " control=" << (uint16_t) niApiPacketHeader.numCtrlMsg
+                          << " payload=" << (uint16_t) niApiPacketHeader.numPaylMsg
+                          << " SFN=" << niApiPacketHeader.nrFrames << " (" << m_sfn << ")"
+                          << " TTI=" << (uint16_t) niApiPacketHeader.nrSubFrames <<  "(" << (uint16_t) m_tti << ")"
+                          << " cellId=" << niApiPacketHeader.cellId
+                          << " RNTI=" << niApiPacketHeader.rnti);
 
-        // process all received control messages
-        for (uint32_t rxCtrlPacketCnt = 0; rxCtrlPacketCnt < niApiPacketHeader.numCtrlMsg ; rxCtrlPacketCnt  ++){
-            // process all received uplink control messages
-            NiStartRxUlCtrlFrame (packetBurst, ctrlMsgList, payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
-        }
-
-        if (niApiPacketHeader.numPaylMsg > 0 ) {
-            // extract uplink payload data packets from MAC PDU and store in a packet burst
-            NiStartRxDataFrame (packetBurst, payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
-        }
-
+            // process all received control messages
+            for (uint32_t rxCtrlPacketCnt = 0; rxCtrlPacketCnt < niApiPacketHeader.numCtrlMsg ; rxCtrlPacketCnt  ++){
+                // process all received uplink control messages
+                NiStartRxUlCtrlFrame (packetBurst, ctrlMsgList, payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
+            }
+            if (niApiPacketHeader.numPaylMsg > 0 ) {
+                // extract uplink payload data packets from MAC PDU and store in a packet burst
+                NiStartRxDataFrame (packetBurst, payloadDataBuffer, (uint32_t*)&payloadDataBufOffset);
+            }
+          }
+        else
+          {
+            NI_LOG_DEBUG (this << " - UL: Received invalid or dummy UL Packet with type:" << niApiPacketHeader.niApiPacketType);
+          }
     } else {
         NI_LOG_ERROR ("NiLtePhyInterface::NiStartRxCtrlDataFrame UL: Device mode " << m_niApiDevType << " not allowed in DL with ns3DevType: " << m_ns3DevType);
         // do nothing
@@ -965,12 +1083,14 @@ bool
         // call ns-3 ReceiveLteControlMessageList function in lte end/ue phy for further control message processing
         m_niPhyRxCtrlEndOkCallback (ctrlMsgList);
     }
-
+    return true;
   } // end NiStartRxCtrlDataFrame function
 
   bool
   NiLtePhyInterface::NiStartRxCellMeasurementIndHandler (PhyCellMeasInd phyCellMeasInd)
   {
+    NI_LOG_INFO("Start Rx Cell Measurement Indication Handling");
+
     // update channel SINR value in case manual channel SINR setting via remote control engine is disabled
     if (g_RemoteControlEngine.GetPdb()->getParameterManualLteUeChannelSinrEnable() == false)
       {
@@ -978,6 +1098,8 @@ bool
         double widebandSinr = NiUtils::ConvertFxpI8_6_2ToDouble(phyCellMeasInd.cellMeasReportBody.widebandSinr);
         // update channel SINR value
         SetNiChannelSinrValue(widebandSinr);
+        // update parameter database at UE
+        g_RemoteControlEngine.GetPdb()->setParameterLteUeChannelSinr(widebandSinr);
       }
     return true;
   }
@@ -990,7 +1112,8 @@ bool
                                 bool firstRun
                                )
   {
-    NI_LOG_DEBUG (this << ", " << sfn << ", " << std::to_string(tti));
+    NI_LOG_INFO("Start Timing Indication handling");
+    NI_LOG_NONE (this << ", " << sfn << ", " << std::to_string(tti));
     m_firstPhyTimingInd = firstRun;
     m_niPhyTimingIndEndOkCallback(sfn, tti, firstRun);
     return true;
@@ -1080,6 +1203,8 @@ bool
                 {
                   rntiMap[uldci->GetDci().m_rnti]++;
                 }
+              NI_LOG_DEBUG (this << " - DL: UL_DCI found (Size=" << sizeof(uldci) << " bytes) /"
+                            " RNTI=" << (uint16_t) uldci->GetDci().m_rnti);
               break;
             }
           case LteControlMessage::DL_DCI:
@@ -1095,14 +1220,17 @@ bool
                 {
                   rntiMap[dldci->GetDci().m_rnti]++;
                 }
+              NI_LOG_DEBUG (this << " - DL: DL_DCI found (Size=" << sizeof(dldci) << " bytes) /"
+                            " RNTI=" << (uint16_t) dldci->GetDci().m_rnti);
               break;
             }
           default:
-            NI_LOG_FATAL (this << " - DL: Message type not recognized");
+            NI_LOG_FATAL (this << " - DL Tx: Message type " << m_messageType << " not recognized");
+            return false;
         }
         itCtrlMsg++;
       } // end while loop
-
+    return true;
   }
 
   bool
@@ -1187,6 +1315,11 @@ bool
                                 << " tbsSize=" << (uint16_t) m_tbsSize << " bytes"
                                 << " buffer offset=" << *payloadDataBufOffset);
 
+                  if (*payloadDataBufOffset > NI_LTE_CONST_MAX_NS3_CTRL_MSG_SIZE)
+                    {
+                      NI_LOG_FATAL("NiLtePhyInterface::NiStartTxDlCtrlFrameUc: size of ns-3 DL control messages over limit, size=" << *payloadDataBufOffset);
+                    }
+
                   // store dl payload packets from packet burst that belong to rnti in pdu
                   NiStartTxDataFrame (packetBurst, payloadDataBuffer, payloadDataBufOffset, m_rnti);
 
@@ -1197,17 +1330,17 @@ bool
               break;
             }
           default:
-            NI_LOG_FATAL (this << " - DL: Message type not recognized");
+            NI_LOG_FATAL (this << " - DL Tx: Message type " << m_messageType << " not recognized");
+            return false;
         }
         itCtrlMsg++;
       } // end while loop
-
+    return true;
   }
 
   bool
   NiLtePhyInterface::NiStartRxDlCtrlFrame (Ptr<PacketBurst> packetBurst, std::list<Ptr<LteControlMessage> > &ctrlMsgList, uint8_t* payloadDataBuffer, uint32_t* payloadDataBufOffset)
   {
-
     LteControlMessage::MessageType m_messageType;
     // extract message type
     std::memcpy((uint8_t*)&m_messageType, payloadDataBuffer+*payloadDataBufOffset, sizeof(m_messageType));
@@ -1324,16 +1457,23 @@ bool
                         << " buffer offset=" << *payloadDataBufOffset
                         << " packetNum=" << m_numPackets);
 
-
-          // extract payload data packets from MAC PDU and store in a burst
-          NiStartRxDataFrame (packetBurst, payloadDataBuffer, payloadDataBufOffset);
+          if (m_numPackets > 0)
+            {
+              // extract payload data packets from MAC PDU and store in a burst
+              NiStartRxDataFrame (packetBurst, payloadDataBuffer, payloadDataBufOffset);
+            }
+          else
+            {
+              NI_LOG_ERROR("DL DCI received without related payload packets (MAC SDUs)");
+            }
 
           break;
         }
       default:
-        NI_LOG_FATAL (this << " - DL: Message type " << m_messageType << " not recognized");
+        NI_LOG_FATAL (this << " - DL Rx: Message type " << m_messageType << " not recognized");
+        return false;
     } // end switch
-
+    return true;
   }
 
   bool
@@ -1405,7 +1545,7 @@ bool
               // and evaluated in LteEnbMac::DoDlInfoListElementHarqFeeback to provide the info to scheduler
 
               NI_LOG_FATAL (this << " - UL: DL HARQ Message sent (Size=" << sizeof(dlharq) << " bytes) - NOT SUPPORTED BY NI API");
-
+              return false;
               break;
             }
           case LteControlMessage::RACH_PREAMBLE:
@@ -1429,11 +1569,12 @@ bool
               break;
             }
           default:
-            NI_LOG_FATAL (this << " - UL: Message type not recognized");
+            NI_LOG_FATAL (this << " - UL Tx: Message type " << m_messageType << " not recognized");
+            return false;
         }
         itCtrlMsg++;
       } // end while loop
-
+    return true;
   }
 
   bool
@@ -1494,7 +1635,7 @@ bool
           //ctrlMsgList.push_back( msg );
 
           NI_LOG_FATAL (this << " - UL: DL HARQ Message received (Size=" << sizeof(dlharq) << " bytes) - NOT SUPPORTED BY NI API");
-
+          return false;
           break;
         }
       case LteControlMessage::RACH_PREAMBLE:
@@ -1516,9 +1657,10 @@ bool
           break;
         }
       default:
-        NI_LOG_ERROR (this << " - UL: Message type " << m_messageType << " not recognized");
+        NI_LOG_FATAL (this << " - UL Rx: Message type " << m_messageType << " not recognized");
+        return false;
     } // end switch
-
+    return true;
   }
 
   bool
@@ -1629,11 +1771,17 @@ bool
                               << " including " << m_numPackets << " packets"
                               << " with total size " << *payloadDataBufOffset << " bytes");
 
-        return 0;
+        return true;
 
     } else {
         NI_LOG_DEBUG (this << " -  No payload data for current rnti");
-        return 0;
+
+        // set number of packets in pdu to 0
+        uint32_t numPackets = 0;
+        std::memcpy(payloadDataBuffer+*payloadDataBufOffset, (uint8_t*)&numPackets, sizeof(numPackets));
+        *payloadDataBufOffset += sizeof(numPackets);
+
+        return true;
     }
   }
 
@@ -1653,6 +1801,23 @@ bool
     std::memcpy((uint8_t*)&m_numPackets, payloadDataBuffer+*payloadDataBufOffset, sizeof(m_numPackets));
     *payloadDataBufOffset += sizeof(m_numPackets);
 
+    const uint32_t packedSizeHeader = sizeof(uint32_t); // 4 byte
+    const uint32_t smallestMacSdu = sizeof(uint8_t);    // 1 byte
+    const uint32_t largestMacSdu = NI_LTE_CONST_MAX_NS3_MAC_PDU_SIZE - packedSizeHeader; // 9268
+    const uint32_t maxNumPackets  = (NI_LTE_CONST_MAX_NS3_MAC_PDU_SIZE / (packedSizeHeader + smallestMacSdu)); // 1854
+
+    if (m_numPackets == 0)
+      {
+        NI_LOG_FATAL("NiLtePhyInterface::NiStartRxDataFrame: no MAC SDUs found in MAC PDU");
+        return false;
+      }
+
+    if (m_numPackets < 0 || m_numPackets > maxNumPackets)
+      {
+        NI_LOG_FATAL("NiLtePhyInterface::NiStartRxDataFrame: MAC PDU corrupt, number of MAC SDUs=" << m_numPackets);
+        return false;
+      }
+
     NI_LOG_DEBUG (this << " - Received MAC PDU including " << m_numPackets << " packets - buffer offset=" << *payloadDataBufOffset);
 
     for (uint32_t idxPacket = 0; idxPacket < m_numPackets; idxPacket++)
@@ -1664,6 +1829,12 @@ bool
         uint32_t m_PacketSize;
         std::memcpy((uint8_t*)&m_PacketSize, payloadDataBuffer+*payloadDataBufOffset, sizeof(m_PacketSize));
         *payloadDataBufOffset += sizeof(m_PacketSize);
+
+        if (m_PacketSize <= 0 || m_PacketSize > largestMacSdu)
+          {
+            NI_LOG_FATAL("NiLtePhyInterface::NiStartRxDataFrame: MAC SDU corrupt, size of MAC SDU=" << m_PacketSize);
+            return false;
+          }
 
         // extract payload packet
         Ptr<Packet> packet = Create<Packet> ((uint8_t const*)(payloadDataBuffer+*payloadDataBufOffset), m_PacketSize, true);
@@ -1724,6 +1895,7 @@ bool
         // add packet to temp burst
         packetBurst->AddPacket(packet);
       }
+    return true;
   }
 
   void
@@ -1994,7 +2166,7 @@ bool
             << " wbCqiNum=" << (uint16_t)wbCqiNum);*/
   }
 
-  void
+  bool
   NiLtePhyInterface::NiStartSubframe (
                                       uint32_t nrFrames,       // current system frame number (SFN)
                                       uint32_t nrSubFrames,    // current subframe number (TTI)
@@ -2006,7 +2178,7 @@ bool
     const int errorTtiDuration   = 666; // defaultTtiTiming*2/3
     const int warningTtiDuration = 333; // defaultTtiTiming*1/3
 
-  NI_LOG_DEBUG("NiLtePhyInterface::NiStartSubframe, " << nrFrames << "." << nrSubFrames);
+    NI_LOG_INFO("Start Subframe " << nrFrames << "." << nrSubFrames << " Processing");
 
     if (defaultTtiDuration != (uint32_t) ns3TtiTimingUs)
       {
@@ -2022,6 +2194,10 @@ bool
 
     // wait for PhyTimingInd to ensure PHY is sync with simulator
     const uint64_t timingIndTimeUs = WaitForPhyTimingInd();
+    if (timingIndTimeUs == 0) {
+        // stop processing because no timing indications received anymore
+        return false;
+    }
 
     // calculate difference to PHY timing indication
     //  diff positive -> PHY timing before NS3 Simulator
@@ -2073,39 +2249,46 @@ bool
     m_lastTimingIndTimeUs = timingIndTimeUs;
 
     // Handle 5G API Rx configuration
-    if(m_ApiLte5Genabled){
-        if (m_firstPhyTimingInd){ 
-          // Condition to send initial Rx message for UE.
-          if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE)){
-              NiStartDlRxApiSend();
+    if(m_ApiLte5Genabled)
+      {
+        //Change value of the SCS in mid operation. Can add more to make more changes.
+        if (m_ScsSwitchTargetSfn > 0)
+          {
+            if ((nrFrames%m_ScsSwitchTargetSfn == 0) && nrSubFrames==1)
+              //if (nrFrames == m_ScsSwitchTargetSfn && nrSubFrames==1)
+              {
+                const bool enableDlSwitching = true;
+                const bool enableUlSwitching = true;
+                if (enableDlSwitching)
+                  {
+                    NiApiScs_t oldDlScs = GetNiDlSCS();
+                    NiApiScs_t newDlScs = (NiApiScs_t)(((uint32_t) oldDlScs+1) % NiApiScs_t::NIAPI_SCS_NUM);
+                    SetNiDlSCSValue(newDlScs);
+                    NI_LOG_CONSOLE_DEBUG ("5G SCS Configuration for DL changed from " << oldDlScs << " to " << newDlScs);
+                  }
+                if (enableUlSwitching)
+                  {
+                    NiApiScs_t oldUlScs = GetNiUlSCS();
+                    NiApiScs_t newUlScs = (NiApiScs_t)(((uint32_t) oldUlScs+1) % NiApiScs_t::NIAPI_SCS_NUM);
+                    SetNiUlSCSValue(newUlScs);
+                    NI_LOG_CONSOLE_DEBUG ("5G SCS Configuration for UL changed from " << oldUlScs << " to " << newUlScs);
+                  }
+              }
           }
-          //Condition to only initial RX configuration for eNB.
-          else if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
-              NiStartUlRxApiSend();
-          }
+
+        // handle 5G Rx configuration
+        if (((m_niApiDevType==NiApiDevType_t::NIAPI_UE)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_UE)){
+            NiStartDlRxApiSend();
         }
-      //Change value of the SCS in mid operation. Can add more to make more changes.
-      //NI_LTE_5G_CONST_MAX_NUM_SCS_CFG
-      // m_ScsSwitchTargetSfn
-      if (nrFrames==m_ScsSwitchTargetSfn && nrSubFrames==1){
-        NiApiScs_t oldDlScs = m_dlscs;
-        NiApiScs_t oldUlScs = m_ulscs;
-        m_dlscs = (NiApiScs_t)(((uint32_t) m_dlscs+1) % NI_LTE_5G_CONST_MAX_NUM_SCS_CFG);
-        m_ulscs = (NiApiScs_t)(((uint32_t) m_ulscs+1) % NI_LTE_5G_CONST_MAX_NUM_SCS_CFG);
-        NI_LOG_CONSOLE_INFO ("5G SCS Configuration for DL changed from " << oldDlScs << " to " << m_dlscs);
-        NI_LOG_CONSOLE_INFO ("5G SCS Configuration for UL changed from " << oldUlScs << " to " << m_ulscs);
-        if (((m_niApiDevType==NIAPI_UE)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_UE)){
-          NiStartDlRxApiSend();
-        }
-        else if (((m_niApiDevType==NIAPI_ENB)||(m_niApiDevType==NIAPI_ALL))&&(m_ns3DevType==NS3_ENB)){
-          NiStartUlRxApiSend();
+        //Condition to only initial RX configuration for eNB.
+        else if (((m_niApiDevType==NiApiDevType_t::NIAPI_ENB)||(m_niApiDevType==NiApiDevType_t::NIAPI_ALL))&&(m_ns3DevType==Ns3LteDevType_t::NS3_ENB)){
+            NiStartUlRxApiSend();
         }
       }
-      //Additional cases need to be implemented here as additional if cases.
-    }
     //End of SCS Changing functions.
 
     UpdateNiChannelSinrValueFromRemoteControl();
+    return true;
   }
 
   uint64_t
@@ -2115,17 +2298,8 @@ bool
     const struct timespec ts = {0, 1000L}; // 1us
     uint32_t numWaitIterations = 0;
     uint64_t systemTimeUs,waitTimeUs;
-    bool firstTimingInd = false;
 
-
-    if (m_niPipeTransport->GetTimingIndReceived() == false)
-      {
-        NI_LOG_CONSOLE_INFO ("    Waiting for first LTE PHY timing indication...");
-        NI_LOG_DEBUG ("Waiting for first timing indication ...");
-        firstTimingInd = true;
-      }
-
-    systemTimeUs = NiUtils::GetSysTime();
+    systemTimeUs = NiUtils::GetSysTime(); // should be a value != 0
 
     // in case timing indication was not received, wait until reception
     while ((m_niPipeTransport->GetTimingIndReceived() == false) ||
@@ -2133,16 +2307,17 @@ bool
       {
         nanosleep( &ts, NULL );
         numWaitIterations++;
+        if ((numWaitIterations % 0x100000) == 0)
+          {
+            NI_LOG_DEBUG ("No Timing indication received for a long time, eNB stopped?");
+            return timingIndTimeUs;
+          }
       }
     timingIndTimeUs = m_niPipeTransport->GetTimingIndTime();
     waitTimeUs = NiUtils::GetSysTime() - systemTimeUs;
     if (numWaitIterations > 0)
       {
         NI_LOG_DEBUG ("Waited " + std::to_string(numWaitIterations) + " iterations for timing indication, waitTimeUs: " + std::to_string(waitTimeUs));
-      }
-    if (firstTimingInd)
-      {
-        NI_LOG_CONSOLE_INFO ("    ...done!" << std::endl << "[~] NS-3 Simulator executing...");
       }
     return timingIndTimeUs;
   }

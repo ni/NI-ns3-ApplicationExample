@@ -1,4 +1,19 @@
-Changelog - NI ns3 Application Example
+Changelog - NI ns-3 Application Example
+
+======================
+v3.0.0        05.10.20
+======================
+- FEATURE: added new combined main file for 5G-LTE-WIFI interworking
+- FEATURE: added testman controlled DC data routing option (Multi-RAT control)
+- FEATURE: made LTE UDP loopback configurable
+- CHANGE: improved logging performance
+- CHANGE: improved scripts for DL data streaming
+- CHANGE: improved robustness on erroneous data reception / transmission
+- FIX: fixed issue with small packet (<= 12 bytes) transmission/reception in DALI PDCP layer
+- FIX: fixed port handling in LWx path
+- FIX: failing "wifi-tcp" test where targeted throughput was not reached
+- FIX: fixed race condition on parallel Tx/Rx processing
+- FIX: fixed possible crashes on end of simulation
 
 ======================
 v2.1.0        15.11.19

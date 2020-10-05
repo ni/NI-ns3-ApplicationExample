@@ -576,17 +576,42 @@ DaliEmuSeparatedInstancesEpcHelper::AddDaliUe (Ptr<Node> ue, Ptr<NetDevice> ueDe
   ue->AggregateObject (dcx);
 }
 
+Ptr<LteUeNetDevice>
+DaliEmuSeparatedInstancesEpcHelper::LookUpUeNetDevice(Ptr<Node> ue)
+{
+  bool lteUeNetDeviceFound = false;
+  Ptr<LteUeNetDevice> ueLteDev = 0;
+  for (uint32_t i = 0; i < ue->GetNDevices (); i++)
+    {
+      if (ue->GetDevice (i)->GetObject<LteUeNetDevice> () != 0)
+        {
+          ueLteDev = ue->GetDevice (i)->GetObject<LteUeNetDevice> ();
+          lteUeNetDeviceFound = true;
+          NS_LOG_INFO ("found LteUeNetDevice with index " << i << " in node ue1");
+          break;
+        }
+    }
+  // check if a LteUeNetDevice is found
+  if (lteUeNetDeviceFound == true)
+    return ueLteDev;
+  else
+    {
+	  NS_LOG_ERROR ("no LteUeNetDevice found in ue1!");
+	  return 0;
+    }
+}
+
 void
 DaliEmuSeparatedInstancesEpcHelper::AddDcxInterface (Ptr<Node> ue1, Ptr<Node> ue2)
 {
   NS_LOG_FUNCTION (this << ue1 << ue2);
-
-  Ptr<LteUeNetDevice> ue1LteDev = ue1->GetDevice (0)->GetObject<LteUeNetDevice> ();
+  bool lteUeNetDeviceFound = false;
+  Ptr<LteUeNetDevice> ue1LteDev = LookUpUeNetDevice(ue1);
   uint64_t ue1Imsi = 0;
   ue1Imsi = ue1LteDev->GetImsi ();
   NS_LOG_INFO ("LteUeNetDevice #1 = " << ue1LteDev << " - Imsi = " << ue1Imsi);
 
-  Ptr<LteUeNetDevice> ue2LteDev = ue2->GetDevice (0)->GetObject<LteUeNetDevice> ();
+  Ptr<LteUeNetDevice> ue2LteDev = LookUpUeNetDevice(ue2);
   uint64_t ue2Imsi = 0;
   ue2Imsi = ue2LteDev->GetImsi ();
   NS_LOG_INFO ("LteUeNetDevice #2 = " << ue2LteDev << " - Imsi = " << ue2Imsi);

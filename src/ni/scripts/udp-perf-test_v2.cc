@@ -245,7 +245,7 @@ int main(int argc, char* argv[]) {
 		po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);
 		po::notify(vm);
 
-		if(vm.count("help")) {
+		if(vm.count("help") || (vm.size() == 0)) {
 			std::cout << desc << std::endl;
 		}
 		if(vm.count("client") || vm.count("source")) {

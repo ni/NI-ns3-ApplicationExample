@@ -229,12 +229,12 @@ LtePdcp::DoTransmitPdcpSdu (Ptr<Packet> p)
   if (pdcp_decisionlwa != g_RemoteControlEngine.GetPdb()->getParameterLwaDecVariable())
     {
 	  pdcp_decisionlwa = g_RemoteControlEngine.GetPdb()->getParameterLwaDecVariable();
-	  NI_LOG_CONSOLE_DEBUG("NI.RC:LWA value changed! LWA value is : " << pdcp_decisionlwa);
+	  NI_LOG_CONSOLE_INFO("NI.RC:LWA value changed! LWA value is : " << pdcp_decisionlwa);
     }
   if (pdcp_decisionlwip != g_RemoteControlEngine.GetPdb()->getParameterLwipDecVariable())
     {
 	  pdcp_decisionlwip = g_RemoteControlEngine.GetPdb()->getParameterLwipDecVariable();
-	  NI_LOG_CONSOLE_DEBUG("NI.RC:LWIP value changed! LWIP value is : " << pdcp_decisionlwip);
+	  NI_LOG_CONSOLE_INFO("NI.RC:LWIP value changed! LWIP value is : " << pdcp_decisionlwip);
     }
 
   // switch between the lwa/lwip modes

@@ -78,10 +78,10 @@ void NiUtils::SetThreadPrioriy (int priority)
   }
 }
 
-void NiUtils::AddThreadInfo (pthread_t threadId, std::string threadName)
+void NiUtils::AddThreadInfo (std::string threadName)
 {
   ThreadInfo threadInfo;
-  threadInfo.id = threadId;
+  threadInfo.id = pthread_self();
   threadInfo.name = threadName;
   m_threadInfo.push_back(threadInfo);
   //pthread_setname_np(threadId, threadName.c_str());
@@ -205,7 +205,7 @@ void NiUtilsHandleSignals (int sig)
   // print backtrace
   NiUtils::Backtrace();
   // de-init logging and save log file in case of errors
-  NiLoggingDeInit();
+  NiLoggingDeInit(false);
 
   exit(1);
 }

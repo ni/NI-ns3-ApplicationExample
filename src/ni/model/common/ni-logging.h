@@ -216,9 +216,9 @@ typedef struct sNiLogInfo {
     }\
 }\
 
-#define NiLoggingDeInit() \
+#define NiLoggingDeInit(joinThread) \
 {\
-  g_NiLogging.DeInitialize();\
+  g_NiLogging.DeInitialize(joinThread);\
 }\
 
 
@@ -230,7 +230,7 @@ public:
   NiLogging(void);
   ~NiLogging(void);
   void Initialize (uint32_t logLevel, std::string fileName, int NiLoggingPriority);
-  void DeInitialize (void);
+  void DeInitialize (bool joinThread = true);
   void Write (const enum NiLogLevel logLevel, const std::string file, const int line, const std::string func, const std::string &buffer);
   void WriteFatal (const enum NiLogLevel logLevel, const std::string file, const int line, const std::string func, const std::string &buffer);
   inline bool IsEnable(void) {return m_logIsEnable;};
@@ -238,7 +238,7 @@ public:
 private:
   void Fatal(niLogInfo logInfo);
   void WriteToFile();
-  void terminateWriteThread();
+  void terminateWriteThread(bool join);
   void writeThread();
   void DisableFirstCall(void);
   const std::string PrintHeader(void);

@@ -22,20 +22,31 @@
 #ifndef SRC_NI_MODEL_COMMON_NI_COMMON_CONSTANTS_H_
 #define SRC_NI_MODEL_COMMON_NI_COMMON_CONSTANTS_H_
 
+#include <cstdint>   // integer types
 
-#define NI_MODULE_VERSION_MAJOR 2
-#define NI_MODULE_VERSION_MINOR 1
+#define NI_MODULE_VERSION_MAJOR 3
+#define NI_MODULE_VERSION_MINOR 0
 #define NI_MODULE_VERSION_FIX   0
 
 #define NI_MODULE_VERSION (std::to_string(NI_MODULE_VERSION_MAJOR) + "." + std::to_string(NI_MODULE_VERSION_MINOR) + "." + std::to_string(NI_MODULE_VERSION_FIX))
 
+// default NI Application Framework version used for LTE and WIFI
 #define NI_AFW_VERSION_MAJOR 2
 #define NI_AFW_VERSION_MINOR 2
 
 #define NI_AFW_VERSION (std::to_string(NI_AFW_VERSION_MAJOR) + "." + std::to_string(NI_AFW_VERSION_MINOR))
 
+// default NI Application Framework version used for 5G-GFDM
+#define NI_AFW_VERSION_MAJOR_5G_GFDM 2
+#define NI_AFW_VERSION_MINOR_5G_GFDM 5
+
+#define NI_AFW_VERSION_5G_GFDM (std::to_string(NI_AFW_VERSION_MAJOR_5G_GFDM) + "." + std::to_string(NI_AFW_VERSION_MINOR_5G_GFDM))
+
 
 #define NI_COMMON_CONST_MAX_PAYLOAD_SIZE 10240 // bytes
+
+// Key to identify ns-3 payloads
+const uint8_t niNs3Key[4] = {0x6e, 0x73, 0x2d, 0x33}; // ASCII "ns-3" -> 6e 73 2d 33
 
 
 #endif /* SRC_NI_MODEL_COMMON_NI_COMMON_CONSTANTS_H_ */

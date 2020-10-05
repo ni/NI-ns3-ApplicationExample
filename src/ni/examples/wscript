@@ -18,11 +18,15 @@ def build(bld):
             ['virtual-net-device','core', 'network', 'config-store', 'wifi', 'mobility', 'internet','point-to-point','lte','stats', 'flow-monitor','applications', 'ni'])
         obj.source = 'ni-lte-wifi-extended.cc'
         
+        obj = bld.create_ns3_program('ni-5g-lte-wifi-interworking',
+            ['virtual-net-device','core', 'network', 'config-store', 'wifi', 'mobility', 'internet','point-to-point','lte','stats', 'flow-monitor','applications', 'ni'])
+        obj.source = 'ni-5g-lte-wifi-interworking.cc'
+
         obj = bld.create_ns3_program('ni-remote-control-simple',
             ['lte', 'ni'])
         obj.source = 'ni-remote-control-simple.cc'
         
         if bld.env['ENABLE_EMU']:
             obj = bld.create_ns3_program('ni-lte-simple-dc',
-                                         ['lte', 'fd-net-device', 'core', 'network', 'config-store', 'wifi', 'mobility', 'internet','point-to-point', 'stats', 'applications', 'ni'])
+            ['lte', 'fd-net-device', 'core', 'network', 'config-store', 'wifi', 'mobility', 'internet','point-to-point', 'stats', 'applications', 'ni'])
             obj.source = 'ni-lte-simple-dc.cc'

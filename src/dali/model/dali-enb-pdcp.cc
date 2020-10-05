@@ -33,6 +33,12 @@
 #include <ns3/lte-pdcp-tag.h>
 #include <ns3/epc-x2-sap.h>
 
+#include "ns3/lwa-tag.h"
+#include "ns3/lwip-tag.h"
+#include "ns3/pdcp-lcid.h"
+
+#include "ns3/ni-module.h"
+
 #include <ns3/ni-logging.h>
 
 namespace ns3 {
@@ -76,14 +82,19 @@ DaliEnbPdcp::DaliEnbPdcp ()
     m_rlcSapProvider (0),
     m_rnti (0),
     m_lcid (0),
-	m_sEnbRnti (0),
+    m_sEnbRnti (0),
     m_epcX2PdcpProvider (0),
     m_txSequenceNumber (0),
     m_rxSequenceNumber (0),
-	m_useDualConnectivity (false),
-	m_sendOverSecondary (false),
-	m_useInSequenceDelivery (false),
-	m_sequenceLost (false)
+    m_useDualConnectivity (false),
+    m_sendOverSecondary (false),
+    m_useInSequenceDelivery (false),
+    m_sequenceLost (false),
+    m_packetCounter(0),
+    pdcp_decisionlwa(0),
+    pdcp_decisionlwip(0),
+    m_dcLwaLwipSwitch(0),
+    pdcp_decisionDc(0)
 {
   NS_LOG_FUNCTION (this);
   m_pdcpSapProvider = new LtePdcpSpecificLtePdcpSapProvider<DaliEnbPdcp> (this);
@@ -101,6 +112,7 @@ DaliEnbPdcp::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::DaliEnbPdcp")
     .SetParent<Object> ()
+	.AddConstructor<DaliEnbPdcp> ()
     .AddTraceSource ("TxPDU",
                      "PDU transmission notified to the RLC.",
                      MakeTraceSourceAccessor (&DaliEnbPdcp::m_txPdu),
@@ -109,6 +121,31 @@ DaliEnbPdcp::GetTypeId (void)
                      "PDU received.",
                      MakeTraceSourceAccessor (&DaliEnbPdcp::m_rxPdu),
                      "ns3::DaliEnbPdcp::PduRxTracedCallback")
+    .AddTraceSource ("TxPDUtrace",//modifications for trace
+                     "PDU to be transmit.",//modifications for trace
+                     MakeTraceSourceAccessor (&DaliEnbPdcp::m_pdcptxtrace),//modifications for trace
+                     "ns3::Packet::TracedCallback")//modifications for trace
+    .AddAttribute ("PDCPDecLwa",
+                   "PDCP LWA or LWIP decision variable",
+                   UintegerValue (0),
+                   MakeUintegerAccessor (&DaliEnbPdcp::pdcp_decisionlwa),
+                   MakeUintegerChecker<uint32_t>())
+    .AddAttribute ("PDCPDecLwip",
+                   "PDCP LWIP decision variable",
+                   UintegerValue (0),
+                   MakeUintegerAccessor (&DaliEnbPdcp::pdcp_decisionlwip),
+                   MakeUintegerChecker<uint32_t>())
+    .AddAttribute ("DcLwaLwipSwitch",
+                   "Switch to allow LWA/LWIP when DC is enabled",
+                   UintegerValue (0),
+                   MakeUintegerAccessor (&DaliEnbPdcp::m_dcLwaLwipSwitch),
+                   MakeUintegerChecker<uint32_t>())
+    .AddAttribute ("PDCPDecDc",
+                   "PDCP DC decision variable",
+                   UintegerValue (0),
+                   MakeUintegerAccessor (&DaliEnbPdcp::pdcp_decisionDc),
+                   MakeUintegerChecker<uint32_t>())
+
     ;
   return tid;
 }
@@ -211,11 +248,64 @@ DaliEnbPdcp::SetUeDataParams(EpcX2Sap::UeDataParams params)
 
 
 ////////////////////////////////////////
+void
+DaliEnbPdcp::TransmitOverLwaLwip(LteRlcSapProvider::TransmitPdcpPduParameters params, Ptr<Packet> p)
+{
+  params.pdcpPdu = p;
+
+  LwaTag LWATag;
+  LwipTag LWIPTag;
+  PdcpLcid lcidtag;
+
+  // switch between the lwa/lwip modes
+  if ((pdcp_decisionlwa>0)&&(pdcp_decisionlwip==0)&&(m_lcid>=3)) // use lwa
+    {
+      NI_LOG_DEBUG("DC not launched and lwa enabled");
+      if(pdcp_decisionlwa==1)
+        {
+          // split packets between lwa und default lte link
+          if((m_packetCounter%2)==0)
+            {
+              m_rlcSapProvider->TransmitPdcpPdu (params);
+            }
+          if((m_packetCounter%2)==1)
+            {
+              LWATag.Set(pdcp_decisionlwa);
+              lcidtag.Set((uint32_t)m_lcid);
+              p->AddPacketTag (LWATag);
+              p->AddByteTag (lcidtag);
+              m_pdcptxtrace(params.pdcpPdu);
+            }
+          m_packetCounter++;
+        }
+      else
+        {
+          // all packets routed over lwa (all drb)
+          LWATag.Set(pdcp_decisionlwa);
+          lcidtag.Set((uint32_t)m_lcid);
+          p->AddPacketTag (LWATag);
+          p->AddByteTag (lcidtag);
+          m_pdcptxtrace(params.pdcpPdu);
+        }
+    }
+  else if ((pdcp_decisionlwa==0)&&(pdcp_decisionlwip>0)&&(m_lcid>=3)) // use lwip
+    {
+      NI_LOG_DEBUG("DC not launched and lwip enabled");
+      // all packets routed over lwip
+      LWIPTag.Set(pdcp_decisionlwip);
+      lcidtag.Set((uint32_t)m_lcid);
+      p->AddPacketTag (LWIPTag);
+      p->AddByteTag (lcidtag);
+      m_pdcptxtrace(params.pdcpPdu);
+    }
+}
 
 void
 DaliEnbPdcp::DoTransmitPdcpSdu (Ptr<Packet> p)
 {
   NS_LOG_FUNCTION (this << m_rnti << (uint32_t) m_lcid << p->GetSize ());
+
+  NI_LOG_DEBUG("eNB send PDCP data for lcid=" << (uint32_t) m_lcid << ", m_rnti=" <<  m_rnti << ", packet size=" << p->GetSize ());
 
   LtePdcpHeader pdcpHeader;
   pdcpHeader.SetSequenceNumber (m_txSequenceNumber);
@@ -240,45 +330,79 @@ DaliEnbPdcp::DoTransmitPdcpSdu (Ptr<Packet> p)
   p->AddByteTag (pdcpTag);
   m_txPdu (m_rnti, m_lcid, p->GetSize ());
 
+  //NI API CHANGE: read out values from remote control database and overwrite local decision variables
+  if (pdcp_decisionlwa != g_RemoteControlEngine.GetPdb()->getParameterLwaDecVariable())
+    {
+      pdcp_decisionlwa = g_RemoteControlEngine.GetPdb()->getParameterLwaDecVariable();
+      NI_LOG_CONSOLE_INFO("NI.RC:LWA value changed! LWA value is : " << pdcp_decisionlwa);
+    }
+  if (pdcp_decisionlwip != g_RemoteControlEngine.GetPdb()->getParameterLwipDecVariable())
+    {
+      pdcp_decisionlwip = g_RemoteControlEngine.GetPdb()->getParameterLwipDecVariable();
+      NI_LOG_CONSOLE_INFO("NI.RC:LWIP value changed! LWIP value is : " << pdcp_decisionlwip);
+    }
+  if (pdcp_decisionDc != g_RemoteControlEngine.GetPdb()->getParameterDcDecVariable())
+    {
+      pdcp_decisionDc = g_RemoteControlEngine.GetPdb()->getParameterDcDecVariable();
+      NI_LOG_CONSOLE_INFO("NI.RC:DC value changed! DC value is : " << pdcp_decisionDc);
+    }
+
+  NS_LOG_INFO(this << " DaliEnbPdcp: Tx packet to downlink local stack");
+
   if(m_epcX2PdcpProvider == 0 || (!m_useDualConnectivity))
-  {
-    NS_LOG_INFO(this << " DaliEnbPdcp: Tx packet to downlink local stack");
-    params.pdcpPdu = p;
-
-    NS_LOG_LOGIC("Params.rnti " << params.rnti);
-    NS_LOG_LOGIC("Params.m_lcid " << params.lcid);
-    NS_LOG_LOGIC("Params.pdcpPdu " << params.pdcpPdu);
-
-    m_rlcSapProvider->TransmitPdcpPdu (params);
-  }
+    {
+	  if ((pdcp_decisionlwa>0)||(pdcp_decisionlwip>0)) // transmit packet over LWA/LWIP
+	    TransmitOverLwaLwip(params, p);
+      else // use default functionality
+        {
+          params.pdcpPdu = p;
+          NS_LOG_LOGIC("Params.rnti " << params.rnti);
+          NS_LOG_LOGIC("Params.m_lcid " << params.lcid);
+          NS_LOG_LOGIC("Params.pdcpPdu " << params.pdcpPdu);
+          NI_LOG_DEBUG("DC not launched and lwa/lwip disabled, use default functionality");
+          m_rlcSapProvider->TransmitPdcpPdu (params);
+        }
+    }
   else if (m_useDualConnectivity)
-  {
-    if (!m_sendOverSecondary)
     {
-      NI_LOG_NONE("LTE.ENB.PDCP.DC: Tx packet to downlink local stack");
-      //Send package over local LTE stack
-      params.pdcpPdu = p;
+	  if (((pdcp_decisionlwa>0)||(pdcp_decisionlwip>0))&&m_dcLwaLwipSwitch==1) // transmit packet over LWA/LWIP
+	    TransmitOverLwaLwip(params, p);
+	  else
+	    {
+        if (pdcp_decisionDc == 1)
+          m_sendOverSecondary = !m_sendOverSecondary; // DALI: Alternate between Local and Remote stack
+        else if (pdcp_decisionDc == 2)
+          m_sendOverSecondary = true; // use only remote stack
+        else
+          m_sendOverSecondary = false; // use only local stack
 
-      NS_LOG_LOGIC("Params.rnti " << params.rnti);
-      NS_LOG_LOGIC("Params.m_lcid " << params.lcid);
-      NS_LOG_LOGIC("Params.pdcpPdu " << params.pdcpPdu);
-
-      m_rlcSapProvider->TransmitPdcpPdu (params);
+	      if (!m_sendOverSecondary)
+	        {
+	          NI_LOG_NONE("LTE.ENB.PDCP.DC: Tx packet to downlink local stack");
+	          //Send package over local LTE stack
+	          params.pdcpPdu = p;
+	          NS_LOG_LOGIC("Params.rnti " << params.rnti);
+	          NS_LOG_LOGIC("Params.m_lcid " << params.lcid);
+	          NS_LOG_LOGIC("Params.pdcpPdu " << params.pdcpPdu);
+	          m_rlcSapProvider->TransmitPdcpPdu (params);
+	        }
+	      else
+	        {
+	          //Send package over epcX2 interface to RLC layer on remote eNB
+	          NS_LOG_INFO(this << " DaliEnbPdcp: Tx packet to downlink stack on Secondary eNB " << m_ueDataParams.targetCellId);
+	          NI_LOG_CONSOLE_DEBUG("LTE.ENB.PDCP.DC: Tx packet to downlink stack on Secondary eNB");
+	          m_ueDataParams.ueData = p;
+	          m_epcX2PdcpProvider->SendDcPdcpPdu (m_ueDataParams);
+	        }
+	    }
     }
-    else
-    {
-      //Send package over epcX2 interface to RLC layer on remote eNB
-      NS_LOG_INFO(this << " DaliEnbPdcp: Tx packet to downlink LTE stack on Secondary eNB " << m_ueDataParams.targetCellId);
-      NI_LOG_CONSOLE_DEBUG("LTE.ENB.PDCP.DC: Tx packet to downlink LTE stack on Secondary eNB");
-      m_ueDataParams.ueData = p;
-      m_epcX2PdcpProvider->SendDcPdcpPdu (m_ueDataParams);
-    }
-    m_sendOverSecondary = !m_sendOverSecondary; // DALI: Alternate between Local and Remote stack
-  }
   else
-  {
-    NS_FATAL_ERROR("Invalid combination");
-  }
+    {
+      NS_FATAL_ERROR("Invalid combination");
+    }
+
+  NI_LOG_NONE(m_useDualConnectivity << " " << pdcp_decisionlwa << " " << pdcp_decisionlwip << " " <<
+                       m_dcLwaLwipSwitch << " " << pdcp_decisionDc << " " << m_sendOverSecondary);
 }
 
 void
@@ -351,14 +475,16 @@ DaliEnbPdcp::DoReceivePdu (Ptr<Packet> p)
 void
 DaliEnbPdcp::DoReceivePduSend (Ptr<Packet> p)
 {
-  if(p->GetSize() > 20 + 8 + 12)
-  {
-    LtePdcpSapUser::ReceivePdcpSduParameters params;
-    params.pdcpSdu = p;
-    params.rnti = m_rnti;
-    params.lcid = m_lcid;
-    m_pdcpSapUser->ReceivePdcpSdu (params);
-  }
+  if(p->GetSize() <= 20 + 8 + 12)
+    {
+      // #TODO clarify the need for this length check with DALI developers
+      NI_LOG_WARN("DaliEnbPdcp length check failed!");
+    }
+  LtePdcpSapUser::ReceivePdcpSduParameters params;
+  params.pdcpSdu = p;
+  params.rnti = m_rnti;
+  params.lcid = m_lcid;
+  m_pdcpSapUser->ReceivePdcpSdu (params);
 }
 
 void

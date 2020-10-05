@@ -50,16 +50,19 @@ install_ni:
 # sync local ns-3 directory to remote machine (e.g. Linux RT controller) 
 # useage: "make sync target=DRE-ELBE-C02"
 sync:
-	rsync -e ssh -avu --exclude=build --exclude=.svn --delete $(shell pwd) root@$(target):"~/"
+	rsync -e ssh -avu --exclude=build --exclude=.svn --exclude=.git --exclude=testpy-output --exclude=*.txt --exclude=*.log --exclude=*.pcap --delete $(shell pwd) root@$(target):"~/"
 	
 prepare_usrp_2974_lvcomms20:
 	opkg update; opkg install --force-downgrade packagegroup-core-buildessential 
 	
 prepare_usrp_2974_lvcomms20_dev:
-	opkg update; opkg install --force-downgrade packagegroup-core-buildessential gcc-dev python-pip python-dev boost boost-dev mono-dev sudo rsync tcpdump htop
+	opkg update; opkg install --force-downgrade packagegroup-core-buildessential gcc-dev python-pip python-dev boost boost-dev mono-dev sudo rsync tcpdump htop git
+	
+prepare_usrp_2974_lvcomms21:
+	opkg update; opkg install packagegroup-core-buildessential
 	
 prepare_usrp_2974_lvcomms21_dev:
-	opkg update; opkg install packagegroup-core-buildessential gcc-dev python-pip python-dev boost boost-dev mono-dev sudo rsync tcpdump htop
+	opkg update; opkg install packagegroup-core-buildessential gcc-dev python-pip python-dev boost boost-dev mono-dev sudo rsync tcpdump htop git
 	
 run_tests_ni:
 	cd src/ni/test/; ./ni_test_single_instance.sh; ./ni_test.sh; cd -

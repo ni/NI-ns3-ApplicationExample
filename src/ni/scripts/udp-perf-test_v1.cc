@@ -233,8 +233,12 @@ int main(int argc, char* argv[])
       po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);
       po::notify(vm);
 
-      if(vm.count("help")) {
+      if(vm.count("help") || (vm.size() == 0)) {
       std::cout << desc << std::endl;
+      std::cout << "Client example:" << std::endl;
+      std::cout << "./udp-perf-test_v1 --client --pkts=10000 --bytes=1000 --burst=1 --interval=1000 --addr=7.0.0.2 --port=8990" << std::endl;
+      std::cout << "Server example:" << std::endl;
+      std::cout << "./udp-perf-test_v1 --server --pkts=10000 --timeout=15000 --port=8990 --outfile=\"traffic.log\"" << std::endl;
       }
       if(vm.count("client")) {
       enableClient = true;

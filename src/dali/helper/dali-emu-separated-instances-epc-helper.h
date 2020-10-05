@@ -106,6 +106,7 @@ public:
   //New for DALI Dual Connectivity
   virtual void AddDaliUe (Ptr<Node> ue, Ptr<NetDevice> ueLteDevice, uint64_t imsi);
   virtual void AddDcxInterface (Ptr<Node> ueNode1, Ptr<Node> ueNode2);
+  virtual Ptr<LteUeNetDevice> LookUpUeNetDevice(Ptr<Node> ue);
 
 private:
 

@@ -292,7 +292,7 @@ namespace ns3 {
           }
       }
 
-    NI_LOG_INFO ("StartSubFrame NS3 SFN.TTI: " + std::to_string(nrFrames) + "." + std::to_string(nrSubFrames) +
+    NI_LOG_DEBUG ("StartSubFrame NS3 SFN.TTI: " + std::to_string(nrFrames) + "." + std::to_string(nrSubFrames) +
                  " , Corrected SFN.TTI: " + std::to_string(correctNrFrames) + "." + std::to_string(correctNrSubFrames) +
                  " , PhyTimingInd SFN.TTI: "  + std::to_string(timingIndSfn) + "." + std::to_string(timingIndTti));
 

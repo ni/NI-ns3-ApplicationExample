@@ -46,12 +46,6 @@ void RemoteControlEngine::Initialize(std::string name, int tmout, int remoteCont
     return;
 }
 
-void RemoteControlEngine::Wait(void)
-{
-    // Wait on thread to finish
-    pthread_join(t, NULL);
-}
-
 ParameterDataBase *RemoteControlEngine::GetPdb(){
     return &pdb;
 }
@@ -65,7 +59,7 @@ void *RemoteControlEngine::RemoteControlInterfaceThread(void)
 {
     // set thread priority
     ns3::NiUtils::SetThreadPrioriy(remoteControlInterfaceThreadPriority);
-    ns3::NiUtils::AddThreadInfo (pthread_self(), "NiRemoteControlEngine thread");
+    ns3::NiUtils::AddThreadInfo ("RC Engine Thread");
     //std::cout << "NI.RC: remote-control thread with id:" <<  pthread_self() << " started" << std::endl;
 
     //todo consider restructuring and cleanup

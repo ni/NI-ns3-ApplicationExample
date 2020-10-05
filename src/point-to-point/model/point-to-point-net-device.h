@@ -20,6 +20,7 @@
 #define POINT_TO_POINT_NET_DEVICE_H
 
 #include <cstring>
+#include <mutex> // NI API CHANGE
 #include "ns3/address.h"
 #include "ns3/node.h"
 #include "ns3/net-device.h"
@@ -459,6 +460,9 @@ private:
   uint32_t m_mtu;
 
   Ptr<Packet> m_currentPkt; //!< Current packet processed
+
+  // NI API CHANGE
+  std::mutex m_sendMutex; //!< Mutex to synchronize Send() method (rx Thread) with Simulator execution in main thread
 
   /**
    * \brief PPP to Ethernet protocol number mapping

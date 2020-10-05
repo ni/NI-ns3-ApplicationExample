@@ -1233,9 +1233,14 @@ LteUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
       // ...
       if (m_niLtePhyModule->GetNiApiDevType() == NIAPI_UE &&
           m_niLtePhyModule->GetNiApiLoopbackEnable() == false
-		  && m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)  //DALI: fake nodes should not access NI API
+          && m_niLtePhyModule->GetNs3DevType () != NS3_NOAPI)  //DALI: fake nodes should not access NI API
         {
-          m_niLtePhyModule->NiStartSubframe(frameNo, subframeNo, Seconds (GetTti ()).GetMicroSeconds(), offset);
+          bool niStartSubframeSuccess = m_niLtePhyModule->NiStartSubframe(frameNo, subframeNo, Seconds (GetTti ()).GetMicroSeconds(), offset);
+          if (niStartSubframeSuccess == false)
+            {
+              NI_LOG_WARN("Stop UE sub frame processing, in case NI PHY synchronization was not successful");
+              return;
+            }
         }
   }
 

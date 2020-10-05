@@ -284,7 +284,7 @@ void
 ApWifiMac::ForwardDown (Ptr<const Packet> packet, Mac48Address from,
                         Mac48Address to, uint8_t tid)
 {
-  NI_LOG_DEBUG("ApWifiMac::ForwardDown: using tid = " << static_cast<uint32_t>(tid));
+  NI_LOG_DEBUG("ApWifiMac::ForwardDown: using tid = " << static_cast<uint32_t>(tid) << " with m_qosSupported = " << m_qosSupported << " packet size = " << packet->GetSize());
 
   NS_LOG_FUNCTION (this << packet << from << to << static_cast<uint32_t> (tid));
   WifiMacHeader hdr;
@@ -360,7 +360,10 @@ ApWifiMac::Enqueue (Ptr<const Packet> packet, Mac48Address to, Mac48Address from
   NI_LOG_DEBUG("ApWifiMac::Enqueue: to = " << to << ", from = " << from);
 
   // NI API CHANGE: Set destination address to BROADCAST to ensure forwarding of external packets
-  to = Mac48Address("FF:FF:FF:FF:FF:FF");
+  if (m_NiWifiMacInterface->GetNiApiEnable())
+    {
+      to = Mac48Address("FF:FF:FF:FF:FF:FF");
+    }
 
   if (to.IsBroadcast () || m_stationManager->IsAssociated (to))
     {
@@ -756,7 +759,7 @@ ApWifiMac::TxOk (const WifiMacHeader &hdr)
       && m_stationManager->IsWaitAssocTxOk (hdr.GetAddr1 ()))
     {
       NI_LOG_DEBUG ("ApWifiMac::TxOk: associated with address = " << hdr.GetAddr1 ());
-
+      NI_LOG_CONSOLE_DEBUG("WIFI.AP: associated with sta = " << hdr.GetAddr1 ());
       NS_LOG_DEBUG ("associated with sta=" << hdr.GetAddr1 ());
       m_stationManager->RecordGotAssocTxOk (hdr.GetAddr1 ());
     }
@@ -772,7 +775,7 @@ ApWifiMac::TxFailed (const WifiMacHeader &hdr)
       && m_stationManager->IsWaitAssocTxOk (hdr.GetAddr1 ()))
     {
       NI_LOG_DEBUG ("ApWifiMac::TxOk: association failed with sta=" << hdr.GetAddr1 ());
-
+      NI_LOG_CONSOLE_DEBUG("WIFI.AP: association failed with sta = " << hdr.GetAddr1 ());
       NS_LOG_DEBUG ("assoc failed with sta=" << hdr.GetAddr1 ());
       m_stationManager->RecordGotAssocTxFailed (hdr.GetAddr1 ());
     }
@@ -791,7 +794,8 @@ ApWifiMac::Receive (Ptr<Packet> packet, const WifiMacHeader *hdr)
     {
       Mac48Address bssid = hdr->GetAddr1 ();
 
-      NI_LOG_DEBUG("ApWifiMac::Receive: hdr->IsData ()"
+      NI_LOG_DEBUG("ApWifiMac::Receive: "
+          << "hdr->IsData () = " << hdr->IsData ()
           << ", !hdr->IsFromDs () = " << !hdr->IsFromDs ()
           << ", hdr->IsToDs () = " << hdr->IsToDs ()
           << ", bssid = " << bssid

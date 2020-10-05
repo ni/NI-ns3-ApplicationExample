@@ -108,6 +108,8 @@ main (int argc, char *argv[])
    // chose whether ns-3 instance should run as NIAPI_BS or NIAPI_TS, NIAPI_BSTS used for simulation mode
    std::string niApiDevMode = "NIAPI_BSTS";
 
+   std::string niAfwVersion = NI_AFW_VERSION; // for LTE/WIFI we use 2.2, for 5G-GFDM we use 2.5 see below
+
    // ====================
    // NI API LTE parameter
 
@@ -121,6 +123,14 @@ main (int argc, char *argv[])
   bool niApiLteLoopbackEnabled = false; // true UDP, false Pipes
   // sinr value in db used for cqi calculation for the ni phy
   double niChSinrValueDb = 30; //10=MCS 12, 30=MCS 28
+  // IP address & Port of ns-3 Lte PHY API on which packets are sent to PHY (e.g. PXI device)
+  std::string niApiLteEnbRemoteIpAddrTx("127.0.0.1");               // remote address to be used for TX socket opening
+  std::string niApiLteEnbRemotePortTx("12802");                     // remote port to be used for TX socket opening
+  std::string niApiLteEnbLocalPortRx("12801");                      // local port to be used for RX socket opening
+  // IP address & Port of ns-3 Lte PHY API on which packets are received from PHY (e.g. PXI device)
+  std::string niApiLteUeRemoteIpAddrTx("127.0.0.1");                // remote address to be used for TX socket opening
+  std::string niApiLteUeRemotePortTx("12801");                      // remote port to be used for TX socket opening
+  std::string niApiLteUeLocalPortRx("12802");                       // local port to be used for RX socket opening
 
   // Command line arguments
   CommandLine cmd;
@@ -138,6 +148,12 @@ main (int argc, char *argv[])
   cmd.AddValue("setDlScs", "Set initial value for the DL Subcarrier Spacing (SCS). 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz", dlscs);
   cmd.AddValue("setUlScs", "Set initial value for the UL Subcarrier Spacing (SCS). 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz", ulscs);
   cmd.AddValue("nextScsSwitchTargetSfn", "Set next SFN to switch the value ",ScsSwitchTargetSfn);
+  cmd.AddValue("niApiLteEnbRemoteIpAddrTx", "Remote IP address for UDP socket on ENB", niApiLteEnbRemoteIpAddrTx);
+  cmd.AddValue("niApiLteEnbRemotePortTx", "Remote port for UDP socket on ENB", niApiLteEnbRemotePortTx);
+  cmd.AddValue("niApiLteEnbLocalPortRx", "Local RX port of ENB", niApiLteEnbLocalPortRx);
+  cmd.AddValue("niApiLteUeRemoteIpAddrTx", "Remote IP address for UDP socket on UE", niApiLteUeRemoteIpAddrTx);
+  cmd.AddValue("niApiLteUeRemotePortTx", "Remote port for UDP socket on UE", niApiLteUeRemotePortTx);
+  cmd.AddValue("niApiLteUeLocalPortRx", "Local RX port of UE", niApiLteUeLocalPortRx);
   cmd.Parse(argc, argv);
 
   // Activate the ns-3 real time simulator
@@ -167,6 +183,10 @@ main (int argc, char *argv[])
   } else {
       NS_FATAL_ERROR ("niApiDevMode " << niApiDevMode << " not allowed");
   }
+
+  // for 5G-GFDM we use AFW 2.5
+  if (niApiLteEnabled && niApiLte5gEnabled)
+    niAfwVersion = NI_AFW_VERSION_5G_GFDM;
 
   // print ouf config parameters
   // TODO-NI: replace cout by NI_LOG_CONSOLE_INFO
@@ -199,7 +219,7 @@ main (int argc, char *argv[])
   else                            std::cout << "disabled" << std::endl;
 
   std::cout << "NI Module Version:    " << NI_MODULE_VERSION << std::endl;
-  std::cout << "Required AFW Version: " << NI_AFW_VERSION << std::endl;
+  std::cout << "Required AFW Version: " << niAfwVersion << std::endl;
 
   std::cout << std::endl;
 
@@ -210,7 +230,7 @@ main (int argc, char *argv[])
   const int niRemoteControlPriority = ns3Priority - 11;
 
   // adding thread ID of main NS3 thread for possible troubleshooting
-  NiUtils::AddThreadInfo(pthread_self(), "NS3 main thread");
+  NiUtils::AddThreadInfo("NS3 main thread");
 
   // install signal handlers in order to print debug information to std::out in case of an error
   NiUtils::InstallSignalHandler();
@@ -293,6 +313,15 @@ main (int argc, char *argv[])
    Config::SetDefault ("ns3::NiLtePhyInterface::enableNiApi", BooleanValue (niApiLteEnabled));
    // Enable / disable the use of ni api udp loopback mode for the ni phy
    Config::SetDefault ("ns3::NiLtePhyInterface::enableNiApiLoopback", BooleanValue (niApiLteLoopbackEnabled));
+   // Set IP address & Port for ENB and UE
+   Config::SetDefault ("ns3::NiLtePhyInterface::niApiLteEnbRemoteIpAddrTx", StringValue ( niApiLteEnbRemoteIpAddrTx ));
+   Config::SetDefault ("ns3::NiLtePhyInterface::niApiLteEnbRemotePortTx", StringValue ( niApiLteEnbRemotePortTx.c_str() ));
+   Config::SetDefault ("ns3::NiLtePhyInterface::niApiLteEnbLocalPortRx", StringValue ( niApiLteEnbLocalPortRx.c_str() ));
+
+   Config::SetDefault ("ns3::NiLtePhyInterface::niApiLteUeRemoteIpAddrTx", StringValue ( niApiLteUeRemoteIpAddrTx.c_str() ));
+   Config::SetDefault ("ns3::NiLtePhyInterface::niApiLteUeRemotePortTx", StringValue ( niApiLteUeRemotePortTx.c_str() ));
+   Config::SetDefault ("ns3::NiLtePhyInterface::niApiLteUeLocalPortRx", StringValue ( niApiLteUeLocalPortRx.c_str() ));
+
    // Set the default channel sinr value in db used for cqi calculation for the ni phy
    Config::SetDefault ("ns3::NiLtePhyInterface::niChSinrValueDb", DoubleValue (niChSinrValueDb));
    // Set the CQI report period for the ni phy
@@ -318,6 +347,9 @@ main (int argc, char *argv[])
        Config::SetDefault ("ns3::NiLtePhyInterface::nextScsSwitchTargetSfn" , UintegerValue(ScsSwitchTargetSfn));
        //************** 5G values end.
      }
+   // Set AFW version to Pipe Tansport layer for named pipe setup
+   Config::SetDefault ("ns3::NiPipeTransport::niAfwVersion" , StringValue(niAfwVersion));
+
    // Set downlink transmission bandwidth in number of resource blocks -> set to 20MHz default here
    Config::SetDefault ("ns3::LteEnbNetDevice::DlBandwidth", UintegerValue (100));
    // Disable ideal and use real RRC protocol with RRC PDUs (cf https://www.nsnam.org/docs/models/html/lte-design.html#real-rrc-protocol-model)
@@ -411,7 +443,7 @@ main (int argc, char *argv[])
        Ptr<OutputStreamWrapper> testprint = Create<OutputStreamWrapper>("routing_static", std::ios::out);
        Ptr<Node> PrintRouteNode;
        Ptr<Ipv4StaticRouting> PrintRouteNodeStaticRouting;
-       for (int i=0; i < LanNodes.GetN(); i++)
+       for (unsigned int i=0; i < LanNodes.GetN(); i++)
          {
            PrintRouteNode = LanNodes.Get (i);
            PrintRouteNodeStaticRouting = ipv4RoutingHelper.GetStaticRouting (PrintRouteNode->GetObject<Ipv4> ());
@@ -555,7 +587,8 @@ main (int argc, char *argv[])
    std::cout << "[#] End simulation" << std::endl << std::endl;
 
    // check received packets
-   if ((niApiDevMode == "NIAPI_TS")||(niApiDevMode == "NIAPI_BSTS"))
+   if (!niApiEnableTapBridge &&
+       ((niApiDevMode == "NIAPI_TS")||(niApiDevMode == "NIAPI_BSTS")))
      {
        NI_LOG_CONSOLE_INFO ("Received packets: " << appServer->GetReceived()
                             << " / Lost packets: " << packetNum-appServer->GetReceived()

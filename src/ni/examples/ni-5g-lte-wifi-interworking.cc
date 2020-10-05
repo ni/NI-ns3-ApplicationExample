@@ -30,7 +30,6 @@
 #include "ns3/config-store-module.h"
 #include "ns3/wifi-module.h"
 #include "ns3/internet-module.h"
-#include "ns3/inet-socket-address.h"
 #include "ns3/tap-bridge-module.h"
 #include "ns3/netanim-module.h"
 #include "ns3/point-to-point-module.h"
@@ -49,10 +48,45 @@
 
 // NI includes
 #include "ns3/ni-module.h"
+// DALI includes
+#include "ns3/dali-module.h"
+#include "ns3/dali-lte-helper.h"
 
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE ("NiLwaLwipExt");
+
+void DualConnectivityLauncher (Ptr<LteEnbNetDevice> MeNB, bool niRemoteControlEnable)
+{
+  // Specific scenario allows to set static values
+  const uint16_t rnti = 1;
+  const uint16_t secondaryRnti = 1;
+  const uint16_t secondaryCellId = 2;
+
+  if (niRemoteControlEnable)
+    {
+      if (g_RemoteControlEngine.GetPdb()->getParameterDcLaunchEnable() == true)
+        {
+          // DC triggered externaly via remote control engine
+          //Trigger Dual Configuration Setup on MeNB
+          MeNB->GetRrc()->DoRecvRrcSecondaryCellDualConnectivityRequest(rnti, secondaryRnti, secondaryCellId);
+          std::cout << "\n\nDALI Dual Connectivity lauched via RC engine: \n\n";
+          fflush( stdout );
+          return;
+        }
+      else
+        {
+          // Schedule Dual Connectivity Setup launcher again to poll getParameterDcLaunchEnable()
+          Simulator::Schedule (Seconds (1.0), &DualConnectivityLauncher, MeNB, niRemoteControlEnable);
+        }
+    }
+  else // default case
+    {
+      //Trigger Dual Configuration Setup on MeNB
+      MeNB->GetRrc()->DoRecvRrcSecondaryCellDualConnectivityRequest(rnti, secondaryRnti, secondaryCellId);
+      std::cout << "\n\nDALI Dual Connectivity lauched: \n\n";
+    }
+}
 
 //-------------------------------------------------------------------------------------
 // main function
@@ -100,6 +134,10 @@ int main (int argc, char *argv[]){
   // 3 = UE Terminal Node, server running on WIFI NetDevice
   int cientServerConfig = 2;
 
+  // number of station nodes in infrastructure mode
+  uint32_t nLteUeNodes = 1;
+  uint32_t nLteEnbNodes = 1;
+
   // ========================
   // general NI API parameter
 
@@ -111,8 +149,42 @@ int main (int argc, char *argv[]){
   bool niRemoteControlEnable = false;
   // Enable TapBridge as data source and data sink
   bool niApiEnableTapBridge = false;
-  // chose whether ns-3 instance should run as NIAPI_BS or NIAPI_TS, NIAPI_BSTS used for simulation mode
+  /*
+   * chose whether ns-3 instance should run as NIAPI_BS or NIAPI_TS, NIAPI_BSTS used for simulation mode
+   *
+   * DALI additional options: M (Master), S (Secondary), BS (Base Station), TS (Terminal Station)
+   * - NIAPI_BSTS 									(simulated channel, one instance)
+   * - NIAPI_MBSTS, NIAPI_SBSTS, 					(simulated channel, two instances)
+   * - NIAPI_MBS, NIAPI_MTS, NIAPI_SBS, NIAPI_STS	(NIAPI enabled, four instances)
+   */
   std::string niApiDevMode = "NIAPI_BSTS";
+
+  std::string niAfwVersion = NI_AFW_VERSION; // for LTE/WIFI we use 2.2, for 5G-GFDM we use 2.5 see below
+
+  // ====================
+  // NI API 5G parameter
+
+  // Activate additional NI API Messages for 5G
+  bool niApiLte5gEnabled = false;
+
+  // 5G DL subccarrier spacing. 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz
+  uint32_t dlscs = 0;
+  // 5G UL subccarrier spacing
+  uint32_t ulscs = 0;
+  //SFN to make a change in the SCS value used.
+  uint32_t ScsSwitchTargetSfn=0;
+
+  // ====================
+  // DALI DualConnectivity parameter
+
+  // Activate DALI Dual Connectivity
+  bool daliDualConnectivityEnabled = false;
+  // Set File Descriptor Device Name
+  std::string fdDeviceName = "eth1";
+  // Starting time in seconds for DALI Dual Connectivity Setup
+  double dualConnectivityLaunchTime = 5.2;
+  // Activate PCDP in-Sequence reordering function
+  bool usePdcpInSequenceDelivery = false;
 
   // ====================
   // NI API LTE parameter
@@ -169,8 +241,10 @@ int main (int argc, char *argv[]){
   // =======================
   // UOC LWIP/LWA extensions
 
-  uint32_t lwaactivate=0;     // LTE+Wifi=1, Wi-Fi=2
-  uint32_t lwipactivate=0;    // if 1 all packets will be transmitted via LWIP
+  uint32_t lwaactivate=0;     // disabled=0, LTE+Wifi=1, Wi-Fi=2
+  uint32_t lwipactivate=0;    // disabled=0, if 1 all packets will be transmitted via LWIP
+  uint32_t dcactivate=0;      // LTE=0, LTE+5G=1, 5G=2
+  uint32_t dcLwaLwipSwitch=1; // 0=DC exclusiv, 1=LWA/LWIP possible when DC is enabled
 
   // MTU size for P2P link between EnB and Wifi AP
   uint32_t xwLwaLinkMtuSize=1500;
@@ -216,9 +290,20 @@ int main (int argc, char *argv[]){
   cmd.AddValue("niApiLteUeRemoteIpAddrTx", "Remote IP address for UDP socket on UE", niApiLteUeRemoteIpAddrTx);
   cmd.AddValue("niApiLteUeRemotePortTx", "Remote port for UDP socket on UE", niApiLteUeRemotePortTx);
   cmd.AddValue("niApiLteUeLocalPortRx", "Local RX port of UE", niApiLteUeLocalPortRx);
-  cmd.AddValue("lwaactivate", "Activate LWA interworking", lwaactivate);
-  cmd.AddValue("lwipactivate", "Activate LWIP interworking", lwipactivate);
-
+  cmd.AddValue("lwaactivate", "Activate LWA interworking (disabled=0, LTE+Wifi=1, Wi-Fi=2)", lwaactivate);
+  cmd.AddValue("lwipactivate", "Activate LWIP interworking (disabled=0, Wi-Fi=1)", lwipactivate);
+  cmd.AddValue("dcactivate", "Activate DC interworking (LTE=0, LTE+5G=1, 5G=2)", dcactivate);
+  // ===================================================
+  cmd.AddValue("niApiLte5gEnabled", "Enable additional NI API Messages for 5G", niApiLte5gEnabled);
+  cmd.AddValue("setDlScs", "Set initial value for the DL Subcarrier Spacing (SCS). 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz", dlscs);
+  cmd.AddValue("setUlScs", "Set initial value for the UL Subcarrier Spacing (SCS). 0=15kHz, 1=30kHz, 2=60kHz. 3=120kHz", ulscs);
+  cmd.AddValue("nextScsSwitchTargetSfn", "Set next SFN to switch the value ",ScsSwitchTargetSfn);
+  // ===================================================
+  cmd.AddValue("daliDualConnectivityEnabled", "Enable/disable DALI Dual Connectivity configuration", daliDualConnectivityEnabled);
+  cmd.AddValue("fdDeviceName", "Interface name for emu FdDevice communication", fdDeviceName);
+  cmd.AddValue("dualConnectivityLaunchTime", "Time in seconds when DALI Dual Connectivity packet transmission should be scheduled", dualConnectivityLaunchTime);
+  cmd.AddValue("usePdcpInSequenceDelivery", "Enable/disable DALI PDCP In-Sequence reordering function", usePdcpInSequenceDelivery);
+  // ===================================================
   cmd.Parse (argc, argv);
 
   // Activate the ns-3 real time simulator
@@ -233,24 +318,100 @@ int main (int argc, char *argv[]){
 
   // write different log files for each stations
   std::string simStationType = "default";
-  if (niApiDevMode == "NIAPI_BS"){
-      // if ns-3 instance is configured as base station it acts as eNB / AP
-      niApiLteDevMode  = "NIAPI_ENB";
-      niApiWifiDevMode = "NIAPI_AP";
-      simStationType   = "BS";
-  } else if (niApiDevMode == "NIAPI_TS") {
-      // if ns-3 instance is configured as base station it acts as UE / STA
-      niApiLteDevMode  = "NIAPI_UE";
-      niApiWifiDevMode = "NIAPI_STA";
-      simStationType   = "TS";
-  } else if (niApiDevMode == "NIAPI_BSTS") {
-      // ns-3 instance is configures as BS and TS- for debugging if only spectrum phy shall be bypassed
-      niApiLteDevMode  = "NIAPI_ALL";
-      niApiWifiDevMode = "NIAPI_ALL";
-      simStationType   = "BSTS";
-  } else {
+  if (!daliDualConnectivityEnabled) // daliDualConnectivityEnabled = false
+    if (niApiDevMode == "NIAPI_BS")
+      {
+        // if ns-3 instance is configured as base station it acts as eNB / AP
+        niApiLteDevMode  = "NIAPI_ENB";
+        niApiWifiDevMode = "NIAPI_AP";
+        simStationType   = "BS";
+      }
+    else if (niApiDevMode == "NIAPI_TS")
+      {
+        // if ns-3 instance is configured as base station it acts as UE / STA
+        niApiLteDevMode  = "NIAPI_UE";
+        niApiWifiDevMode = "NIAPI_STA";
+        simStationType   = "TS";
+      }
+    else if (niApiDevMode == "NIAPI_BSTS")
+      {
+        // ns-3 instance is configures as BS and TS- for debugging if only spectrum phy shall be bypassed
+        niApiLteDevMode  = "NIAPI_ALL";
+        niApiWifiDevMode = "NIAPI_ALL";
+        simStationType   = "BSTS";
+      }
+    else
+    {
       NS_FATAL_ERROR ("niApiDevMode " << niApiDevMode << " not allowed");
-  }
+    }
+  else  // daliDualConnectivityEnabled = true
+    {
+	  if (niApiDevMode == "NIAPI_MBS" && niApiLteEnabled)
+	    {
+          // if ns-3 instance is configured as base station it acts as MeNB
+          niApiLteDevMode  = "NIAPI_ENB";
+          niApiWifiDevMode = "NIAPI_AP";
+		  simStationType   = "MBS";
+		}
+	  else if (niApiDevMode == "NIAPI_MTS" && niApiLteEnabled)
+	    {
+          // if ns-3 instance is configured as terminal station it acts as MUE
+          niApiLteDevMode  = "NIAPI_UE";
+          niApiWifiDevMode = "NIAPI_STA";
+          simStationType   = "MTS";
+		}
+	  else if (niApiDevMode == "NIAPI_SBS" && niApiLteEnabled)
+	    {
+          // if ns-3 instance is configured as base station it acts as SeNB
+          niApiLteDevMode  = "NIAPI_ENB";
+          niApiWifiDevMode = "NIAPI_AP";
+          simStationType   = "SBS";
+		}
+	  else if (niApiDevMode == "NIAPI_STS" && niApiLteEnabled)
+	    {
+          // if ns-3 instance is configured as terminal station it acts as SUE
+          niApiLteDevMode  = "NIAPI_UE";
+          niApiWifiDevMode = "NIAPI_STA";
+          simStationType   = "STS";
+		}
+	  else if (niApiDevMode == "NIAPI_BSTS" && !niApiLteEnabled)
+	    {
+          // ns-3 instance is configures as BS and TS (Master and Secondary)- for debugging if only spectrum phy shall be bypassed
+          niApiLteDevMode  = "NIAPI_ALL";
+          niApiWifiDevMode = "NIAPI_ALL";
+          simStationType   = "BSTS";
+		}
+	  else if (niApiDevMode == "NIAPI_MBSTS" && !niApiLteEnabled)
+	    {
+          // ns-3 instance is configures as MBS and STS- for debugging if only spectrum phy shall be bypassed
+          niApiLteDevMode  = "NIAPI_ALL";
+          niApiWifiDevMode = "NIAPI_ALL";
+          simStationType   = "MBSTS";
+		}
+	  else if (niApiDevMode == "NIAPI_SBSTS" && !niApiLteEnabled)
+	    {
+          // ns-3 instance is configures as SBS and STS- for debugging if only spectrum phy shall be bypassed
+          niApiLteDevMode  = "NIAPI_ALL";
+          niApiWifiDevMode = "NIAPI_ALL";
+          simStationType   = "SBSTS";
+		}
+	  else
+	    {
+		  if (niApiLteEnabled)
+            NS_FATAL_ERROR ("niApiDevMode " << niApiDevMode << " not allowed for DALI Dual Connectivity and NI API for LTE enabled");
+		  else
+            NS_FATAL_ERROR ("niApiDevMode " << niApiDevMode << " not allowed for DALI Dual Connectivity and NI API for LTE disabled");
+		}
+    }
+
+  // for 5G-GFDM we use AFW 2.5
+  if (niApiLteEnabled && niApiLte5gEnabled)
+    niAfwVersion = NI_AFW_VERSION_5G_GFDM;
+
+  // NOTE: check for dali DC and LWA/LWIP misconfiguration
+  // NOTE: LWA+DC allowed, LWIP+DC not allowed because of unsolved conflicts
+  if (daliDualConnectivityEnabled && lwipactivate > 0)
+    NS_FATAL_ERROR ("dual connectivity and LWIP are not allowed to enable simultaneously for now");
 
   // check and apply 802.11 API settings
   if (niApiWifiSta1RemoteIpAddrTxTmp.empty() || niApiWifiSta1RemotePortTxTmp.empty() || niApiWifiSta1LocalPortRxTmp.empty())
@@ -319,6 +480,10 @@ int main (int argc, char *argv[]){
   if (niApiLteLoopbackEnabled == true) std::cout << "enabled" << std::endl;
   else                                 std::cout << "disabled" << std::endl;
 
+  std::cout << "5G API extensions:     ";
+  if (niApiLte5gEnabled == true) std::cout << "enabled" << std::endl;
+  else                           std::cout << "disabled" << std::endl;
+
   std::cout << "TapBridge:             ";
   if (niApiEnableTapBridge == true) std::cout << "enabled" << std::endl;
   else                              std::cout << "disabled" << std::endl;
@@ -340,10 +505,21 @@ int main (int argc, char *argv[]){
   if (lwipactivate==1) std::cout << "activated" << std::endl;
   else                 std::cout << "not activated" << std::endl;
 
+  std::cout << "DALI DC (RRC):         ";
+  if (daliDualConnectivityEnabled) std::cout << "enabled" << std::endl;
+  else                             std::cout << "disabled" << std::endl;
+
+  std::cout << "DALI DC (PDCP):        ";
+  if (dcactivate==1)      std::cout << "partial (LTE+5G/LTE) activated" << std::endl;
+  else if (dcactivate==2) std::cout << "activated" << std::endl;
+  else                     std::cout << "not activated" << std::endl;
+
   std::cout << "Client Server Config:  " << cientServerConfig << std::endl;
 
   std::cout << "NI Module Version:     " << NI_MODULE_VERSION << std::endl;
-  std::cout << "Required AFW Version:  " << NI_AFW_VERSION << std::endl;
+  std::cout << "Required AFW Version:  " << niAfwVersion << std::endl;
+
+
 
   std::cout << std::endl;
 
@@ -433,8 +609,30 @@ int main (int argc, char *argv[]){
                         wifiPhyHelp.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11_RADIO);
                         wifiPhyHelp.SetChannel (wifiChannelHelp.Create ());
 
-  MobilityHelper MobilityHelp;
-                 MobilityHelp.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
+  MobilityHelper LteMobilityHelp;
+                 LteMobilityHelp.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
+
+  // second mobility helper for WIFI to keep a short distance of STA to AP also in the DC case
+  MobilityHelper WifiMobilityHelp;
+                 WifiMobilityHelp.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
+
+  if (daliDualConnectivityEnabled)
+    {
+      // number of station nodes in infrastructure mode need to be changed for DALI
+      nLteUeNodes = 2;
+      nLteEnbNodes = 2;
+      /*
+       * DALI uses Position Allocator to force eNB connection with correspondent UE (Master and Secondary)
+       * and reduce interference in simulated physical channel
+       */
+      Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
+      double distance = 10000.0;
+      for (uint16_t i = 0; i < nLteUeNodes; i++)
+        {
+          positionAlloc->Add (Vector(distance * i, 0, 0));
+        }
+      LteMobilityHelp.SetPositionAllocator(positionAlloc);
+    }
 
   // ip helper
   InternetStackHelper     ipStackHelp;
@@ -456,16 +654,16 @@ int main (int argc, char *argv[]){
                 LanNodes.Create (2);
   // lte user terminal nodes
   NodeContainer ueNodes;
-                ueNodes.Create(1);
+                ueNodes.Create(nLteUeNodes);
   // lte enb nodes - here fixed to one but can be extended
   NodeContainer enbNodes;
-                enbNodes.Create(1);
+                enbNodes.Create(nLteEnbNodes);
 
   // install corresponding net devices on all nodes
   NetDeviceContainer p2pWifiDevices  = p2pHelp.Install (MobileNetworkGwNode, wifiApNode.Get(0));
   NetDeviceContainer csmaDevices     = csmaHelp.Install (LanNodes);
-  // note: all ue nodes have an lte and wifi net device
-  NetDeviceContainer staDevices      = wifiHelp.Install (wifiPhyHelp, wifiStaMacHelp, NodeContainer(ueNodes, wifiStaNodes));
+  // note: only the first UE node has wifi device, in DC case secondary UE node doesn't have wifi device
+  NetDeviceContainer staDevices      = wifiHelp.Install (wifiPhyHelp, wifiStaMacHelp, NodeContainer(ueNodes.Get(0), wifiStaNodes));
   NetDeviceContainer apDevices       = wifiHelp.Install (wifiPhyHelp, wifiApMacHelp, wifiApNode);
 
   // install ip stacks on all nodes
@@ -482,6 +680,10 @@ int main (int argc, char *argv[]){
   Ipv4Address UeIpSubnet      = "7.0.0.0";
   Ipv4Address xwLwaSubnet     = "20.1.2.0";
   Ipv4Address xwLwipSubnet    = "20.1.3.0";
+  Ipv4Address epcIpSubnet     = "11.0.0.0";
+  Ipv4Address mmeIpSubnet     = "12.0.0.0";
+  Ipv4Address x2IpSubnet      = "13.0.0.0";
+  Ipv4Address dcxIpSubnet     = "14.0.0.0";
 
   uint16_t    DestPort        = 9;   // Discard port (RFC 863)
 
@@ -500,6 +702,21 @@ int main (int argc, char *argv[]){
                          wifiIpInterfaces.Add (ipAddressHelp.Assign (apDevices));
                          wifiIpInterfaces.Add (ipAddressHelp.Assign (staDevices));
   Ipv4Address WifiGwIpAddr = wifiIpInterfaces.GetAddress (0);//"10.1.2.1";
+
+
+  if (daliDualConnectivityEnabled)
+    {
+      // Switch to enable/disable LWA functionality (also partial use)
+      Config::SetDefault ("ns3::DaliEnbPdcp::PDCPDecLwa", UintegerValue(lwaactivate));
+      // Switch to enable/disable LWIP functionality
+      Config::SetDefault ("ns3::DaliEnbPdcp::PDCPDecLwip", UintegerValue(lwipactivate));
+      // Switch to enable/disable DC functionality
+      Config::SetDefault ("ns3::DaliEnbPdcp::PDCPDecDc", UintegerValue(dcactivate));
+      // Switch to allow LWA/LWIP when DC is enabled
+      Config::SetDefault ("ns3::DaliEnbPdcp::DcLwaLwipSwitch", UintegerValue(dcLwaLwipSwitch));
+      // Set DC value in the parameter database
+      g_RemoteControlEngine.GetPdb()->setParameterDcDecVariable(dcactivate);
+    }
 
   // ==========================
   // LWA/LWIP extensions by UOC
@@ -579,9 +796,33 @@ int main (int argc, char *argv[]){
   // initiate IPsec tunnel for LWIP link
   // Note: needs to be called after PopulateRoutingTables
   // Note: here the first UE is selected as end point for the IPSec tunnel
-  Tunnel IPSec_tunnel (lwipepNode, ueNodes.Get (0), xwLwipIpInterfaces.GetAddress (0), wifiIpInterfaces.GetAddress (1));
+  // Note: LWIP and dualconnectivity have unsolved conflicts, so LWIP can be used only if DC is disabled
+  if (!daliDualConnectivityEnabled)
+    Tunnel IPSec_tunnel (lwipepNode, ueNodes.Get (0), xwLwipIpInterfaces.GetAddress (0), wifiIpInterfaces.GetAddress (1));
 
-  // ===================================================================================================================
+  // ============================================
+  // setup 5G values
+
+  // Enable/ disable the 5G API
+  Config::SetDefault ("ns3::NiLtePhyInterface::niApiLte5gEnabled",BooleanValue(niApiLte5gEnabled));
+  // Use simple round robin scheduler here (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
+  std::string LteMacSchedulerType = "ns3::RrFfMacScheduler";
+  // Enables the SCS configuration and the GFDM Complaint Round Robin MAC Scheduler only if both
+  // are true, meaning that GFDM transmission is desired.
+  if (niApiLteEnabled && niApiLte5gEnabled)
+    {
+      // Set the DL SCS for the ni Phy.
+      Config::SetDefault ("ns3::NiLtePhyInterface::niDlScs", UintegerValue (dlscs));
+      // Set the UL SCS for the ni Phy.
+      Config::SetDefault ("ns3::NiLtePhyInterface::niUlScs", UintegerValue (ulscs));
+      // Use simple round robin scheduler with GFDM specific PRB allocation patterns
+      LteMacSchedulerType = "ns3::NiGfdmRrFfMacScheduler";
+      // Set the SFN to perform SCS change.
+      Config::SetDefault ("ns3::NiLtePhyInterface::nextScsSwitchTargetSfn" , UintegerValue(ScsSwitchTargetSfn));
+    }
+  // Set AFW version to Pipe Tansport layer for named pipe setup
+  Config::SetDefault ("ns3::NiPipeTransport::niAfwVersion" , StringValue(niAfwVersion));
+
   // setup the lte network - note that lte is configured after "PopulateRoutingTables" as static routing is used for epc
 
   // Set the device type mode for the ni phy applied for this ns-3 instance
@@ -597,12 +838,14 @@ int main (int argc, char *argv[]){
 
   // Set downlink transmission bandwidth in number of resource blocks -> set to 20MHz default here
   Config::SetDefault ("ns3::LteEnbNetDevice::DlBandwidth", UintegerValue (100));
+
   // Disable ideal and use real RRC protocol with RRC PDUs (cf https://www.nsnam.org/docs/models/html/lte-design.html#real-rrc-protocol-model)
-  Config::SetDefault ("ns3::LteHelper::UseIdealRrc", BooleanValue (false));
+  Config::SetDefault ("ns3::DaliLteHelper::UseIdealRrc", BooleanValue (false));
   // Disable CQI measurement reports based on PDSCH (based on ns-3 interference model)
-  Config::SetDefault ("ns3::LteHelper::UsePdschForCqiGeneration", BooleanValue (false));
-  // Use simple round robin scheduler here (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
-  Config::SetDefault ("ns3::LteHelper::Scheduler", StringValue ("ns3::RrFfMacScheduler"));
+  Config::SetDefault ("ns3::DaliLteHelper::UsePdschForCqiGeneration", BooleanValue (false));
+  // Use simple round robin scheduler; for GFDM with specific PRB allocation patterns
+  Config::SetDefault ("ns3::DaliLteHelper::Scheduler", StringValue (LteMacSchedulerType));
+
   // Set the adpative coding and modulation model to Piro as this is the simpler one
   Config::SetDefault ("ns3::LteAmc::AmcModel", EnumValue (LteAmc::PiroEW2010));
   // Disable HARQ as this not support by PHY and not implemented in NI API
@@ -619,15 +862,50 @@ int main (int argc, char *argv[]){
   g_RemoteControlEngine.GetPdb()->setParameterManualLteUeChannelSinrEnable(false);
   g_RemoteControlEngine.GetPdb()->setParameterLteUeChannelSinr(niChSinrValueDb);
 
-  // epc helper is used to create core network incl installation of eNB App
-  Ptr<PointToPointEpcHelper>  epcHelper = CreateObject<PointToPointEpcHelper> ();
-  // lte helper is used to install L2/L3 on eNB/UE (PHY,MAC,RRC->PDCP/RLC, eNB NetDevice)
-  Ptr<LteHelper>              lteHelper = CreateObject<LteHelper> ();
+  // epc helper is used to create core network incl installation of eNB App, DALI DC new EPC helpers implemented
+  Ptr<EpcHelper>  epcHelper;
+  if (!daliDualConnectivityEnabled)
+    {
+      epcHelper = CreateObject<PointToPointEpcHelper> ();
+    }
+  else if (niApiDevMode == "NIAPI_BSTS")
+    epcHelper = CreateObject<DaliEmuOneInstanceEpcHelper> ();
+  else
+    {
+	  epcHelper = CreateObject<DaliEmuSeparatedInstancesEpcHelper> ();
+	  epcHelper->SetAttribute ("niApiDevMode", StringValue (niApiDevMode));
+    }
+
+  // lte helper is used to install L2/L3 on eNB/UE (PHY,MAC,RRC->PDCP/RLC, eNB NetDevice), DALI DC uses a specific LTE Helper
+  Ptr<DaliLteHelper> lteHelper = CreateObject<DaliLteHelper> ();
   lteHelper->SetEpcHelper (epcHelper);
 
   // Use simple round robin scheduler here
   // (cf https://www.nsnam.org/docs/models/html/lte-design.html#round-robin-rr-scheduler)
-  lteHelper->SetSchedulerType ("ns3::RrFfMacScheduler");
+  lteHelper->SetSchedulerType (LteMacSchedulerType);
+
+  if (daliDualConnectivityEnabled)
+    {
+	  lteHelper->SetAttribute ("isDaliDualConnectivity", BooleanValue (daliDualConnectivityEnabled));
+	  lteHelper->SetAttribute ("niApiDevMode", StringValue (niApiDevMode));
+	  // Enable/Disable PCDP in-Sequence reordering function
+	  lteHelper->SetAttribute ("usePdcpInSequenceDelivery", BooleanValue (usePdcpInSequenceDelivery));
+	  //Set up FdNetDevice name for every DALI EPC/LTE interfaces
+      epcHelper->SetAttribute ("sgwDeviceName", StringValue (fdDeviceName));
+      epcHelper->SetAttribute ("mmeDeviceName", StringValue (fdDeviceName));
+      epcHelper->SetAttribute ("enbS1uDeviceName", StringValue (fdDeviceName));
+      epcHelper->SetAttribute ("enbS1MmeDeviceName", StringValue (fdDeviceName));
+      epcHelper->SetAttribute ("enbX2DeviceName", StringValue (fdDeviceName));
+      epcHelper->SetAttribute ("ueDcxDeviceName", StringValue (fdDeviceName));
+      //Set ip address spaces for the different DALI subnetworks
+      epcHelper->SetAttribute ("IpMask", Ipv4MaskValue (IpMask));
+      epcHelper->SetAttribute ("ueIpSubnet", Ipv4AddressValue (UeIpSubnet));
+      epcHelper->SetAttribute ("epcIpSubnet", Ipv4AddressValue (epcIpSubnet));
+      epcHelper->SetAttribute ("mmeIpSubnet", Ipv4AddressValue (mmeIpSubnet));
+      epcHelper->SetAttribute ("x2IpSubnet", Ipv4AddressValue (x2IpSubnet));
+      epcHelper->SetAttribute ("dcxIpSubnet", Ipv4AddressValue (dcxIpSubnet));
+      epcHelper->Initialize ();
+    }
 
   Ptr<Node> PacketGwNode = epcHelper->GetPgwNode ();
   // create lte p2p link to mobile network gateway - work around for the global/static routing problem
@@ -637,10 +915,10 @@ int main (int argc, char *argv[]){
   Ipv4InterfaceContainer p2pLteIpInterfaces = ipAddressHelp.Assign (p2pLteDevices);
 
   // lte & wifi channel / mobility  model
-  MobilityHelp.Install (wifiStaNodes);
-  MobilityHelp.Install (wifiApNode);
-  MobilityHelp.Install (enbNodes);
-  MobilityHelp.Install (ueNodes);
+  WifiMobilityHelp.Install (wifiStaNodes);
+  WifiMobilityHelp.Install (wifiApNode);
+  LteMobilityHelp.Install (enbNodes);
+  LteMobilityHelp.Install (ueNodes);
 
   // Install lte net devices to the nodes
   NetDeviceContainer enbDevices = lteHelper->InstallEnbDevice (enbNodes);
@@ -659,11 +937,38 @@ int main (int argc, char *argv[]){
       //StaticRouting->AddNetworkRouteTo (Ipv4Address (WifiIpSubnet), Ipv4Mask (IpMask),  Ipv4Address (WifiGwIpAddr), 1);
     }
 
-  // Attach one UE per eNodeB
-  for (uint16_t i = 0; i < ueNodes.GetN (); i++)
+  if (daliDualConnectivityEnabled)
     {
-      lteHelper->Attach (ueDevices.Get(i), enbDevices.Get(0));
-      // side effect: the default EPS bearer will be activated
+      // Connects eNBs using X2 links
+      lteHelper->AddX2Interface (enbNodes);
+      // Connects UEs using DCX links
+      lteHelper->AddDcxInterface (ueNodes);
+
+      // Attach mUE and MeNB or sUE and SeNB
+      uint16_t i = 0;
+      uint16_t n = ueNodes.GetN ();
+      if ((niApiDevMode == "NIAPI_MBS") || (niApiDevMode == "NIAPI_MTS"))
+        {
+          i = 0;
+          n = 1;
+        }
+      if ((niApiDevMode == "NIAPI_SBS") || (niApiDevMode == "NIAPI_STS"))
+        {
+          i = 1;
+          n = 2;
+        }
+      for (i; i < n; i++)
+        lteHelper->Attach (ueDevices.Get(i), enbDevices.Get(i));
+        // side effect: the default EPS bearer will be activated
+    }
+  else
+    {
+      // Attach one UE per eNodeB
+      for (uint16_t i = 0; i < ueNodes.GetN (); i++)
+        {
+          lteHelper->Attach (ueDevices.Get(i), enbDevices.Get(i));
+          // side effect: the default EPS bearer will be activated
+        }
     }
 
   // Set the default gateway for the wifi stations
@@ -746,6 +1051,22 @@ int main (int argc, char *argv[]){
   std::cout << "Server IP Addr             = " << ServerIPAddr << std::endl;
   std::cout << std::endl;
 
+  if (verbose)
+    {
+      // ========================================================
+      std::cout << "MobileNetworkGwNode ID     = " << MobileNetworkGwNode->GetId() << std::endl;
+      std::cout << "PacketGwNode ID            = " << PacketGwNode->GetId() << std::endl;
+      std::cout << "enbNodes ID                = " << enbNodes.Get(0)->GetId() << std::endl;
+      std::cout << "wifiApNode ID              = " << wifiApNode.Get(0)->GetId() << std::endl;
+      std::cout << "ueNode ID                  = " << ueNodes.Get(0)->GetId() << std::endl;
+
+      std::cout << std::endl;
+      std::cout << "LWA p2p device 0 Mac Addr  = " << xwLwaDevices.Get (0)->GetAddress() << std::endl;
+      std::cout << "LWA p2p device 1 Mac Addr  = " << xwLwaDevices.Get (1)->GetAddress() << std::endl;
+      std::cout << "WiFi AP device Mac Addr    = " << apDevices.Get (0)->GetAddress() << " ifID = " << apDevices.Get (0)->GetIfIndex() << std::endl;
+      std::cout << "WiFi STA device Mac Addr   = " << staDevices.Get (0)->GetAddress() << " ifID = " << staDevices.Get (0)->GetIfIndex()<< std::endl;
+      // ========================================================
+    }
   // include application
   Ipv4Address  ClientDestAddr  = ServerIPAddr;
   // Convert to time object
@@ -753,7 +1074,7 @@ int main (int argc, char *argv[]){
 
   Ptr<NiUdpServer> appServer;
 
-  if (!niApiEnableTapBridge)
+  if (!niApiEnableTapBridge && !(niApiDevMode == "NIAPI_SBS" || niApiDevMode == "NIAPI_STS" || niApiDevMode == "NIAPI_SBSTS"))
     {
       // undirectional traffic - https://www.nsnam.org/doxygen/classns3_1_1_udp_client.html
       NiUdpServerHelper     ServerHelp (DestPort);
@@ -764,11 +1085,13 @@ int main (int argc, char *argv[]){
       ClientHelp.SetAttribute ("Interval", TimeValue (packetIntervalSec));
       ClientHelp.SetAttribute ("PacketSize", UintegerValue (packetSize));
 
-      if ((niApiDevMode == "NIAPI_BS")||(niApiDevMode == "NIAPI_BSTS")){
+      if ((niApiDevMode == "NIAPI_BS")||(niApiDevMode == "NIAPI_BSTS")||
+          (niApiDevMode == "NIAPI_MBS")||(niApiDevMode == "NIAPI_MBSTS"))
+        {
           ApplicationContainer clientApps = ClientHelp.Install (ClientNode);
           clientApps.Start (Seconds (transmTime));
           clientApps.Stop (Seconds (simTime));
-      }
+        }
 
       ApplicationContainer serverApps = ServerHelp.Install (ServerNode);
       serverApps.Start (Seconds (1.0));
@@ -776,46 +1099,54 @@ int main (int argc, char *argv[]){
 
       appServer = ServerHelp.GetServer ();
     }
-  else
+  else if (niApiEnableTapBridge)
     {
-      if (niApiDevMode == "NIAPI_BS"){
-          std::cout << "Install TAP bridge for BS host IP node..." << std::endl;
-          enbDevices.Get (0)->SetAddress (Mac48Address::Allocate ());
+      if ((niApiDevMode == "NIAPI_BS")||(niApiDevMode == "NIAPI_MBS")||(niApiDevMode == "NIAPI_SBS"))
+        {
+          std::cout << "Install TAP bridge for eNB (" << niApiDevMode << ") host IP node..." << std::endl;
+          uint32_t idx = (niApiDevMode == "NIAPI_SBS") ? 1 : 0; // second eNB for SBS, else first eNB
+          enbDevices.Get(idx)->SetAddress (Mac48Address::Allocate ());
           TapBridgeHelper tapBridgeENB;
           std::string modeENB = "ConfigureLocal";
           std::string tapNameENB = "NIAPI_TapENB";
           tapBridgeENB.SetAttribute ("Mode", StringValue (modeENB));
           tapBridgeENB.SetAttribute ("DeviceName", StringValue (tapNameENB));
           tapBridgeENB.SetAttribute ("Mtu", UintegerValue(1500) );
-          tapBridgeENB.Install (LanNodes.Get(1), csmaDevices.Get(1));
-      }
-      else if(niApiDevMode == "NIAPI_TS"){
+          // TODO for SBS the tapbridge needs to be setup differently
+          tapBridgeENB.Install (LanNodes.Get(1), csmaDevices.Get(1)); // install to Host Node, works for BS/MBS
+        }
+      else if((niApiDevMode == "NIAPI_TS")||(niApiDevMode == "NIAPI_MTS")||(niApiDevMode == "NIAPI_STS"))
+        {
           //Tap Bridge for UE (LTE)
-          std::cout <<"Install TAP bridge for UE host IP node..." <<std::endl;
-          ueDevices.Get(0)->SetAddress(Mac48Address::Allocate());
+          std::cout <<"Install TAP bridge for UE (" << niApiDevMode << ") host IP node..." <<std::endl;
+          uint32_t idx = (niApiDevMode == "NIAPI_STS") ? 1 : 0; // second UE for STS, else first UE
+          ueDevices.Get(idx)->SetAddress(Mac48Address::Allocate());
           TapBridgeHelper tapBridgeUE(Ipv4Address("7.0.0.2"));
           std::string modeUE = "ConfigureLocal";
           std::string tapNameUE = "NIAPI_TapUE";
           tapBridgeUE.SetAttribute("Mode", StringValue(modeUE));
           tapBridgeUE.SetAttribute("DeviceName", StringValue(tapNameUE));
           tapBridgeUE.SetAttribute("Mtu", UintegerValue(1500));
-          tapBridgeUE.Install(ueNodes.Get(0), ueDevices.Get(0));
+          tapBridgeUE.Install(ueNodes.Get(idx), ueDevices.Get(idx)); // install to UE
 
-          //Tap Bridge for STA (Wifi)
-          std::cout <<"Install TAP bridge for Sta host IP node..." <<std::endl;
-          TapBridgeHelper tapBridgeSta;
-          std::string modeSta = "ConfigureLocal";
-          std::string tapNameSta = "NIAPI_TapSTA";
-          tapBridgeSta.SetAttribute("Mode", StringValue(modeSta));
-          tapBridgeSta.SetAttribute("DeviceName", StringValue(tapNameSta));
-          tapBridgeSta.SetAttribute("Mtu", UintegerValue(1500));
-          tapBridgeSta.Install(ueNodes.Get(0), staDevices.Get(0));
-      }
+          if (niApiDevMode != "NIAPI_STS")
+            {
+              //Tap Bridge for STA (Wifi)
+              std::cout <<"Install TAP bridge for STA (" << niApiDevMode << ") host IP node..." <<std::endl;
+              TapBridgeHelper tapBridgeSta;
+              std::string modeSta = "ConfigureLocal";
+              std::string tapNameSta = "NIAPI_TapSTA";
+              tapBridgeSta.SetAttribute("Mode", StringValue(modeSta));
+              tapBridgeSta.SetAttribute("DeviceName", StringValue(tapNameSta));
+              tapBridgeSta.SetAttribute("Mtu", UintegerValue(1500));
+              tapBridgeSta.Install(ueNodes.Get(0), staDevices.Get(0));
+            }
+        }
     }
 
   // PCAP debugging
-  // p2pHelp.EnablePcapAll("lte_wifi_plus_lwa_lwip");
-  // p2pHelp.EnablePcap("lte_wifi_p2p", p2pWifiDevices.Get(0), true);
+  // p2pHelp.EnablePcapAll("5g_lte_wifi_interworking");
+  // p2pHelp.EnablePcap("xwLwaDevice(1)", xwLwaDevices.Get(1), true);
   // csmaHelp.EnablePcapAll ("lte_wifi_csma", true);
 
   // stop the simulation after simTime seconds
@@ -824,6 +1155,18 @@ int main (int argc, char *argv[]){
   if (niApiLteEnabled && !niApiLteLoopbackEnabled)
     {
       NI_LOG_CONSOLE_INFO ("\n--> Please enable now Rx/Tx in LTE Application Framework!");
+    }
+
+  //Get pointers to eNBs LteEnbNetDevice, allowing to access RRC instance.
+  NetDevice* MeNB_dev;
+  LteEnbNetDevice* MeNB;
+
+  if (((niApiDevMode == "NIAPI_BSTS") && daliDualConnectivityEnabled)||(niApiDevMode == "NIAPI_MBS")||(niApiDevMode == "NIAPI_MBSTS"))
+    {
+      MeNB_dev = GetPointer (enbDevices.Get(0));
+      MeNB = ( LteEnbNetDevice*)(MeNB_dev);
+      // Schedule Dual Connectivity Setup launcher
+      Simulator::Schedule (Seconds (dualConnectivityLaunchTime), &DualConnectivityLauncher, MeNB, niRemoteControlEnable);
     }
 
   std::cout << std::endl;
@@ -835,12 +1178,16 @@ int main (int argc, char *argv[]){
 
   // check received packets
   if (!niApiEnableTapBridge &&
-      ((niApiDevMode == "NIAPI_TS")||(niApiDevMode == "NIAPI_BSTS")))
+      ((niApiDevMode == "NIAPI_TS")||(niApiDevMode == "NIAPI_BSTS")||
+       (niApiDevMode == "NIAPI_MTS")||(niApiDevMode == "NIAPI_MBSTS")))
     {
       NI_LOG_CONSOLE_INFO ("Received packets: " << appServer->GetReceived()
                            << " / Lost packets: " << packetNum-appServer->GetReceived()
                            << "\n");
     }
+
+  if (((niApiDevMode == "NIAPI_BSTS") && daliDualConnectivityEnabled)||(niApiDevMode == "NIAPI_MBS")||(niApiDevMode == "NIAPI_MBSTS"))
+    MeNB_dev->Unref();
 
   // De-init NI modules
   NI_LOG_CONSOLE_INFO ("De-init NI modules ...");

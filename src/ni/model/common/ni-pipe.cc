@@ -169,7 +169,7 @@ namespace ns3
         temp = select((*pFdMax), pReadFds, NULL, NULL, &tv);     // use select() so that we can specify a timeout
         if (temp < 0)      // error ----------------------------------------
           {
-            printf( "ERROR: NiapiNamedPipeHelper.c -> PipeRead() -> select() errno=%i: %s", errno, strerror(errno) );
+            printf( "ERROR: NiapiNamedPipeHelper.c -> PipeRead() -> select() errno=%i: %s\n", errno, strerror(errno) );
             return -1;
           }
         else if (temp == 0)  // no data --------------------------------------
@@ -192,7 +192,7 @@ namespace ns3
                 nread = read((*pFd), pBufU8, max_len);
                 if (nread < 0 )
                   {
-                    printf( "ERROR: NiapiNamedPipeHelper.c -> PipeRead() -> read() errno=%i: %s", errno, strerror(errno) );
+                    printf( "ERROR: NiapiNamedPipeHelper.c -> PipeRead() -> read() errno=%i: %s\n", errno, strerror(errno) );
                     return -2;
                   }
                 return nread;

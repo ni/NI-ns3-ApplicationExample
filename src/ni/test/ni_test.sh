@@ -94,7 +94,7 @@ do
   # wait for second returning process and collect exit status
   wait -n
   EXIT_SCRIPT_2=$?
-  if [ "$EXIT_SCRIPT_1" -eq 124 ]; then
+  if [ "$EXIT_SCRIPT_2" -eq 124 ]; then
     echo "  ...stopped on TIMEOUT!"
   fi
   

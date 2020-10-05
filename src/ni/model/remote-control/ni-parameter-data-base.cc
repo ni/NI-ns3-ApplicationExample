@@ -23,7 +23,25 @@
 #include "ni-parameter-data-base.h"
 #include "iostream"
 
+ParameterDataBase::ParameterDataBase ()
+{
+  parameterInt1 = 0;
+  parameterString1 = "";
+  parameterNum_PhyTimingInd = 0;
+  parameterLog_PhyTimingInd = false;
+  lwaDecisionVariable = 0;
+  lwipDecisionVariable = 0;
+  dcDecisionVariable = 0;
+  dcLaunchEnable = false;
+  manualLteUeChannelSinrEnable = false;
+  lteUeChannelSinr = 0.0;
+  gfdmDlScs = 0;
+  gfdmUlScs = 0;
+}
 
+ParameterDataBase::~ParameterDataBase ()
+{
+}
 
 //
 // 1st demo parameter access methods (2 xactual type (int), 2x string)
@@ -146,6 +164,76 @@ void ParameterDataBase::setParameterLwipDecVariable(uint32_t p2) {
     }
 }
 
+
+
+//===============
+//ns3 example for implementing Dual Connectivity decision variables --DC
+void ParameterDataBase::setParameterDcDecVariable(uint32_t p1) {
+  // 0, 1, 2
+  // otherwise throw error message
+  if (p1 <= 2)
+    {
+      dcDecisionVariable = p1;
+    }
+  else
+    {
+      std::cout << "ParameterDataBase::setParameterDcDecVariable: ERR:DC value not in range" << std::endl;
+    }
+}
+
+std::string ParameterDataBase::setParameterDcDecVariable(std::string p1str) {
+  // 0, 1, 2
+  // otherwise throw error message
+  std::string ret = p1str;
+  if (p1str == "1") {
+      dcDecisionVariable = 1;
+  } else if (p1str == "2") {
+      dcDecisionVariable = 2;
+  } else if (p1str == "0") {
+      dcDecisionVariable = 0;
+  } else {
+      std::cout << "ParameterDataBase::setParameterDcDecVariable: ERR:DC value not in range" << std::endl;
+      ret = "ERR:DC value not in range";
+  }
+  return ret;
+}
+
+uint32_t ParameterDataBase::getParameterDcDecVariable(){
+ 	return dcDecisionVariable;
+}
+
+std::string ParameterDataBase::getStringParameterDcDecVariable(){
+  return std::to_string(dcDecisionVariable);
+}
+
+// launch dual connectivity
+void ParameterDataBase::setParameterDcLaunchEnable(bool enable) {
+  dcLaunchEnable = enable;
+}
+
+std::string ParameterDataBase::setParameterDcLaunchEnable(std::string enableStr) {
+  if (enableStr == "true") {
+      dcLaunchEnable = true;
+  } else {
+      dcLaunchEnable = false;
+  }
+  return enableStr;
+}
+
+bool ParameterDataBase::getParameterDcLaunchEnable(void){
+  return dcLaunchEnable;
+}
+
+std::string ParameterDataBase::getStringParameterDcLaunchEnable(void){
+  if (dcLaunchEnable) {
+      return "true";
+  } else {
+      return "false";
+  }
+}
+
+//===============
+
 std::string ParameterDataBase::setParameterLwipDecVariable(std::string p2str) {
   // 0, 1
   // otherwise throw error message
@@ -215,6 +303,46 @@ std::string ParameterDataBase::getStringParameterLteUeChannelSinr(){
   return std::to_string(lteUeChannelSinr);
 }
 
+//ns3 5G GFDM DL SCS
+void ParameterDataBase::setParameterGfdmDlScs(uint32_t dlScs) {
+  // range check?
+  gfdmDlScs = dlScs;
+}
+
+std::string ParameterDataBase::setParameterGfdmDlScs(std::string dlScs) {
+  // range check?
+  gfdmDlScs = std::stoul(dlScs);
+  return dlScs;
+}
+
+uint32_t ParameterDataBase::getParameterGfdmDlScs(void){
+  return gfdmDlScs;
+}
+
+std::string ParameterDataBase::getStringParameterGfdmDlScs(void){
+  return std::to_string(gfdmDlScs);
+}
+
+//ns3 5G GFDM UL SCS
+void ParameterDataBase::setParameterGfdmUlScs(uint32_t ulScs) {
+  // range check?
+  gfdmUlScs = ulScs;
+}
+
+std::string ParameterDataBase::setParameterGfdmUlScs(std::string ulScs) {
+  // range check?
+  gfdmUlScs = std::stoul(ulScs);
+  return ulScs;
+}
+
+uint32_t ParameterDataBase::getParameterGfdmUlScs(void){
+  return gfdmUlScs;
+}
+
+std::string ParameterDataBase::getStringParameterGfdmUlScs(void){
+  return std::to_string(gfdmUlScs);
+}
+
 std::string ParameterDataBase::getParameterByName(std::string pname){
 
   std::string response = "";
@@ -223,21 +351,29 @@ std::string ParameterDataBase::getParameterByName(std::string pname){
   if (pname.empty()) {
       response = "ERR:EMPTY_VARIABLE_NAME";
   } else if (pname == "ParameterInt1") {
-      response = getStringParamterInt1();
+      response = "NS3:READ:" + pname + ":" + getStringParamterInt1();
   } else if (pname == "ParameterString1") {
-      response = getParameterString1();
+      response = "NS3:READ:" + pname + ":" + getParameterString1();
   } else if (pname == "num_PhyTimingInd") {
-      response = getStringParameterNumPhyTimingInd();
+      response = "NS3:READ:" + pname + ":" + getStringParameterNumPhyTimingInd();
   } else if (pname == "log_PhyTimingInd") {
-      response = getStringParameterLogPhyTimingInd();
+      response = "NS3:READ:" + pname + ":" + getStringParameterLogPhyTimingInd();
   } else if (pname == "ParameterLwaDecVariable") {
-      response = getStringParameterLwaDecVariable();
+      response = "NS3:READ:" + pname + ":" + getStringParameterLwaDecVariable();
   } else if (pname == "ParameterLwipDecVariable") {
-      response = getStringParameterLwipDecVariable();
+      response = "NS3:READ:" + pname + ":" + getStringParameterLwipDecVariable();
+  } else if (pname == "ParameterDcDecVariable") {
+      response = "NS3:READ:" + pname + ":" + getStringParameterDcDecVariable();
+  } else if (pname == "ParameterDcLaunchEnable") {
+      response = "NS3:READ:" + pname + ":" + getStringParameterDcLaunchEnable();
   } else if (pname == "ParameterManualLteUeChannelSinrEnable") {
-      response = getStringParameterManualLteUeChannelSinrEnable();
+      response = "NS3:READ:" + pname + ":" + getStringParameterManualLteUeChannelSinrEnable();
   } else if (pname == "ParameterLteUeChannelSinr") {
-      response = getStringParameterLteUeChannelSinr();
+      response = "NS3:READ:" + pname + ":" + getStringParameterLteUeChannelSinr();
+  } else if (pname == "ParameterGfdmDlScs") {
+      response = "NS3:READ:" + pname + ":" + getStringParameterGfdmDlScs();
+  } else if (pname == "ParameterGfdmUlScs") {
+      response = "NS3:READ:" + pname + ":" + getStringParameterGfdmUlScs();
   } else {
       response = "ERR:UNKOWN_PARAMETER";
   }
@@ -260,13 +396,21 @@ std::string ParameterDataBase::setParameterByName(std::string pname, std::string
   } else if (pname == "log_PhyTimingInd") {
       setParameterLogPhyTimingInd(pvalue);
   } else if (pname == "ParameterLwaDecVariable") {
-      response = setParameterLwaDecVariable(pvalue);
+      response = "NS3:WRITE:" + pname + ":" + setParameterLwaDecVariable(pvalue);
   } else if (pname == "ParameterLwipDecVariable") {
-      response = setParameterLwipDecVariable(pvalue);
+      response = "NS3:WRITE:" + pname + ":" + setParameterLwipDecVariable(pvalue);
+  } else if (pname == "ParameterDcDecVariable") {
+        response = "NS3:WRITE:" + pname + ":" + setParameterDcDecVariable(pvalue);
+  } else if (pname == "ParameterDcLaunchEnable") {
+        response = "NS3:WRITE:" + pname + ":" + setParameterDcLaunchEnable(pvalue);
   } else if (pname == "ParameterManualLteUeChannelSinrEnable") {
-      response = setParameterManualLteUeChannelSinrEnable(pvalue);
+      response = "NS3:WRITE:" + pname + ":" + setParameterManualLteUeChannelSinrEnable(pvalue);
   } else if (pname == "ParameterLteUeChannelSinr") {
-      response = setParameterLteUeChannelSinr(pvalue);
+      response = "NS3:WRITE:" + pname + ":" + setParameterLteUeChannelSinr(pvalue);
+  } else if (pname == "ParameterGfdmDlScs") {
+      response = "NS3:WRITE:" + pname + ":" + setParameterGfdmDlScs(pvalue);
+  } else if (pname == "ParameterGfdmUlScs") {
+      response = "NS3:WRITE:" + pname + ":" + setParameterGfdmUlScs(pvalue);
   } else {
       response = "ERR_UNKOWN_PARAMETER"; //TODO-NI: change to ERR:UNKOWN_PARAMETER
   }

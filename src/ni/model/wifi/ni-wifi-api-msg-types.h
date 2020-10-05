@@ -24,6 +24,7 @@
 
 #include "stdint.h"   // integer types
 #include "ns3/ni-l1-l2-api.h"
+#include "ns3/ni-wifi-constants.h"
 
 //======================================================================================
 // helpers
@@ -175,7 +176,7 @@ typedef struct sMsduTxPayload {
   uint32_t reserved = 0;	// U8
   uint32_t msduLength = 0;	// U16
 
-  uint32_t msduData[4065];	// msduLength (max. 4065) * U8
+  uint32_t msduData[NI_WIFI_CONST_MAX_MSDU_SIZE];	// msduLength (max. 4065) * U8
 } MsduTxPayload;		// = min. 8 bytes, max. 4073 bytes
 
 // Notice, that msduData is excluded from msduTxPayloadSpec as it of variable length

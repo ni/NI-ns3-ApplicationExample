@@ -13,6 +13,9 @@ declare -a NODE1_START_CMD_LIST=(
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext_no_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lan__no_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lte__no_loopback"
+                     "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lte_lwa_full__no_loopback"
+                     "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lte_lwa_split__no_loopback"
+                     "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lte_lwip__no_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_wifi__no_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_lte__lte_loopback"
                      "./ni_start.sh LteWiFi BSTS config_lwa_lwip_ext__ref_wifi__wifi_loopback"
@@ -23,6 +26,7 @@ declare -a NODE1_START_CMD_LIST=(
                      "./ni_start.sh LteDcDali BSTS config_lte_dc_dali_dl_no_loopback"
                      "./ni_start.sh LteDcDali BSTS config_lte_dc_dali_ul_no_loopback"
                      "./ni_start.sh LteDcDali BSTS config_lte_dc_dali_tcp_no_loopback"
+                     "./ni_start.sh LteWifi5g BSTS config_5g_lte_wifi_interworking_no_loopback"
                      )
 
 NUMTESTS=${#NODE1_START_CMD_LIST[@]}

@@ -47,7 +47,6 @@ private:
 public:
     RemoteControlEngine();
     void Initialize(std::string name, int tmout, int remoteControlThreadPriority);
-    void Wait();
     void Deinitialize();
 
     ParameterDataBase *GetPdb();

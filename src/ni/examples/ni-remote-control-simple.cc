@@ -94,7 +94,7 @@ void test_standalone_rc_engine(){
     const int niRemoteControlPriority = parentPriority -1;
 
     // adding thread ID of main NS3 thread for possible troubleshooting
-    NiUtils::AddThreadInfo(pthread_self(), "NS3 main thread");
+    NiUtils::AddThreadInfo("NS3 main thread");
 
     g_RemoteControlEngine.Initialize("ns3", 100, niRemoteControlPriority); //uses global instance of remote control engine
 

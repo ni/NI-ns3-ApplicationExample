@@ -1,0 +1,45 @@
+#---------------------------------------------
+# Core parameters
+#---------------------------------------------
+
+ns3_base_dir="/home/root/ns-3.26/"
+
+packetSize="1000"
+numPackets="80"
+interPacketInterval="500"
+simTime="60"
+transmTime="10"
+
+# General NI API settings
+niApiEnableLogging="\"true\""
+niApiEnableTapBridge="\"false\""
+
+# Wifi NI API settings
+niApiWifiEnabled="\"false\""
+niApiWifiLoopbackEnabled="\"false\""
+
+# LTE NI API settings
+niApiLteEnabled="\"false\""
+niApiLteLoopbackEnabled="\"false\""
+
+# Server configuration: 1=LAN node, 2=UE terminal, 3= UE terminal but Wifi netdevice
+cientServerConfig="2"
+
+# Interworking parameters
+# 0= w/o LWA, 1= w/ split LWA LTE/Wifi, 2= w/ full LWA over Wifi 
+lwaactivate="0"
+# 0= w/o IPSEC, 1= w/ IPSEC
+lwipactivate="0"
+# LTE=0, LTE+5G=1, 5G=2
+dcactivate="0"
+
+# Dual Connectivity Parameters
+fdDeviceName="\"$(ip -o -4 route show to default | awk '{print $5}')\""
+daliDualConnectivityEnabled="\"true\""
+dualConnectivityLaunchTime="15"
+usePdcpInSequenceDelivery="\"false\""
+
+# Enable/disable Remote Control engine
+niRemoteControlEnable="\"false\""
+
+#---------------------------------------------

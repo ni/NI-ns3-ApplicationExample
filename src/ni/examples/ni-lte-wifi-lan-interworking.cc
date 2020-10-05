@@ -41,7 +41,7 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE ("lte_wifi_interworking");
+NS_LOG_COMPONENT_DEFINE ("lte_wifi_lan_interworking");
 
 void OwnSend(Ptr<Socket> socket1, Ptr<Socket> socket2, uint32_t pktSize,
              uint32_t pktCount, Time pktInterval)
@@ -184,6 +184,15 @@ main (int argc, char *argv[])
   bool tracing = true;
   bool verbose = true;
 
+  std::cout << "Init NI modules ..." << std::endl;
+  // deriving thread priorities from ns3 main process
+  int ns3Priority = NiUtils::GetThreadPrioriy();
+  const int niLoggingPriority = ns3Priority - 10;
+  // adding thread ID of main NS3 thread for possible troubleshooting
+  NiUtils::AddThreadInfo("NS3 main thread");
+  // install signal handlers in order to print debug information to std::out in case of an error
+  NiUtils::InstallSignalHandler();
+
   if (verbose)
     {
       LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
@@ -192,18 +201,11 @@ main (int argc, char *argv[])
       LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
       LogComponentEnable ("OnOffApplication", LOG_LEVEL_INFO);
 
-      std::cout <<"\nNI logging enabled" <<std::endl;
+      std::cout << "\nNI logging enabled" << std::endl;
       // Init ni real time logging - can also be used if compiled in "optimized" mode
-      // install signal handlers in order to print debug information to std::out in case of an error
-      NiUtils::InstallSignalHandler();
-      int ns3priority = NiUtils::GetThreadPrioriy();
-      int niLoggingPriority = ns3priority - 10;
-      std::string LogFileName = "/tmp/Log_LteWifi_interworking.txt";
+      std::string LogFileName = "/tmp/Log_LteWifiLan_interworking.txt";
       NiLoggingInit(LOG__LEVEL_WARN | LOG__CONSOLE_DEBUG, LogFileName, NI_LOG__INSTANT_WRITE_DISABLE, niLoggingPriority);
-      // adding thread ID of main NS3 thread for possible troubleshooting
-      NiUtils::AddThreadInfo(pthread_self(), "NS3 main thread");
     }
-
 
   // define client server configuration
   int clientAppConfig    = 3;
@@ -587,7 +589,7 @@ main (int argc, char *argv[])
       serverApps.Stop (Seconds (10.0));
   }
 
-  std::cout << "Start simulation \n";
+  std::cout << "Start simulation" << std::endl;
 
   Simulator::Stop (Seconds (10.0));
 
@@ -600,5 +602,13 @@ main (int argc, char *argv[])
 
   Simulator::Run ();
   Simulator::Destroy ();
+
+  // De-init NI modules
+  std::cout << "De-init NI modules" << std::endl;
+  if (verbose)
+    {
+      NiLoggingDeInit();
+    }
+
   return 0;
 }

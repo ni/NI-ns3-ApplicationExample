@@ -12,3 +12,9 @@ udp-perf-test_v2.o: udp-perf-test_v2.cc
 
 clean:
 	rm -f *.o
+	rm -f udp-perf-test_v1 udp-perf-test_v2
+
+install:
+	cp udp-perf-test_v1 /usr/local/bin/
+	cp udp-perf-test_v2 /usr/local/bin/
+	ldconfig

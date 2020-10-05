@@ -52,6 +52,7 @@ namespace ns3 {
     m_loglevelMask = LOG__NONE;
     m_curLogBufferEntry = 0;
     m_logThreadPriority = 0;
+    m_logThread = NULL;
   }
 
   NiLogging::~NiLogging(void)
@@ -96,11 +97,11 @@ namespace ns3 {
   }
 
   void
-  NiLogging::DeInitialize (void)
+  NiLogging::DeInitialize (bool joinThread)
   {
     if (m_logIsEnable)
       {
-        terminateWriteThread();
+        terminateWriteThread(joinThread);
         WriteToFile();
         pthread_mutex_destroy(&m_logMutex);
         sem_destroy(&m_semMsgCount);
@@ -119,8 +120,8 @@ namespace ns3 {
   void
   NiLogging::writeThread()
   {
-    NI_LOG_DEBUG("NI.LOGGING: logging thread with id:" << pthread_self() << " started");
-    NiUtils::AddThreadInfo (pthread_self(), "Nilogging thread");
+    NI_LOG_DEBUG("NI.LOGGING: logging thread with id:" << m_logThread->Self() << " started");
+    NiUtils::AddThreadInfo ("NiLogging Thread");
 
     // Main thread that writes the buffers into the log file
     // Now we reduce the priority of this thread
@@ -206,6 +207,14 @@ namespace ns3 {
         // Now we write to file pointer
         if (m_syncToFileInstant)
           {
+#if 1 // file wrap
+            if (m_curLogBufferEntry >= (NI_LOG__BUFFER_SIZE-1))
+              {
+                m_filePtr << "^^^^ last entry before buffer Wrap ^^^^" << std::endl;
+                m_filePtr.seekp(0); // reset to the begining
+                m_filePtr << "---- file buffer Wrap ----" << std::endl;
+              }
+#endif
             // write to file
             m_filePtr << msgBufferStream.str() << std::endl;
           }
@@ -214,8 +223,8 @@ namespace ns3 {
             // write into circular buffer
             m_logStringBuffer[m_curLogBufferEntry].str(std::string()); // clear the stringstream
             m_logStringBuffer[m_curLogBufferEntry] << msgBufferStream.str() << std::endl;
-            m_curLogBufferEntry =  (m_curLogBufferEntry+1) % NI_LOG__BUFFER_SIZE;
           }
+        m_curLogBufferEntry =  (m_curLogBufferEntry+1) % NI_LOG__BUFFER_SIZE;
       }
   }
 
@@ -321,7 +330,7 @@ namespace ns3 {
   }
 
   void
-  NiLogging::terminateWriteThread()
+  NiLogging::terminateWriteThread(bool join)
   {
     m_flagStopWriteThread = true;
 
@@ -329,7 +338,10 @@ namespace ns3 {
       {
         NS_FATAL_ERROR("NiLogging::terminateWriteThread::Error calling sem_post!");
       }
-    m_logThread->Join();
+    if (join)
+      {
+        m_logThread->Join();
+      }
   }
 
   void

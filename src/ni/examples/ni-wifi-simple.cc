@@ -213,7 +213,7 @@ int main (int argc, char *argv[])
   int ns3priority = NiUtils::GetThreadPrioriy();
   int niLoggingPriority = ns3priority - 10;
   // adding thread ID of main NS3 thread for possible troubleshooting
-  NiUtils::AddThreadInfo(pthread_self(), "NS3 main thread");
+  NiUtils::AddThreadInfo("NS3 main thread");
 
   // install signal handlers in order to print debug information to std::out in case of an error
   NiUtils::InstallSignalHandler();
@@ -318,7 +318,7 @@ int main (int argc, char *argv[])
 
       for (uint32_t index = 0; index < nWifiStaNodes; index++)
         {
-          if (((index+1) == niApiWifiDeviceSelect) && ((niApiWifiDevMode == "NIAPI_STA")||(niApiWifiDevMode == "NIAPI_ALL")))
+          if ((int(index+1) == niApiWifiDeviceSelect) && ((niApiWifiDevMode == "NIAPI_STA")||(niApiWifiDevMode == "NIAPI_ALL")))
             {
               // set api device type to NIAPI_STA to create udp socket for api connection
               Config::SetDefault ("ns3::NiWifiMacInterface::niApiDevType",StringValue ( "NIAPI_STA"));

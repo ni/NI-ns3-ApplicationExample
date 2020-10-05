@@ -43,6 +43,8 @@
 #include <inttypes.h>
 
 #include "ns3/ni-utils.h"
+#include "ns3/ni-common-constants.h"
+#include "ns3/ni-wifi-constants.h"
 #include "ni-wifi-mac-interface.h"
 
 namespace ns3
@@ -232,17 +234,17 @@ namespace ns3
     NI_LOG_DEBUG(this << " - Set NI WIFI API Mode to " << type);
 
     if (type == "NIAPI_AP")
-      m_niApiWifiDevType = NIAPI_AP;
+      m_niApiWifiDevType = NiApiWifiDevType_t::NIAPI_AP;
     else if (type == "NIAPI_STA")
-      m_niApiWifiDevType = NIAPI_STA;
+      m_niApiWifiDevType = NiApiWifiDevType_t::NIAPI_STA;
     else if (type == "NIAPI_ALL")
-      m_niApiWifiDevType = NIAPI_WIFI_ALL;
+      m_niApiWifiDevType = NiApiWifiDevType_t::NIAPI_WIFI_ALL;
     else if (type == "NIAPI_STA1")
-      m_niApiWifiDevType = NIAPI_STA1;
+      m_niApiWifiDevType = NiApiWifiDevType_t::NIAPI_STA1;
     else if (type == "NIAPI_STA2")
-      m_niApiWifiDevType = NIAPI_STA2;
+      m_niApiWifiDevType = NiApiWifiDevType_t::NIAPI_STA2;
     else if (type == "NIAPI_NONE")
-      m_niApiWifiDevType = NIAPI_WIFI_NONE;
+      m_niApiWifiDevType = NiApiWifiDevType_t::NIAPI_WIFI_NONE;
     else
       NI_LOG_FATAL("\n Unrecognizable option for running the program in NI API WIFI device mode");
 
@@ -295,7 +297,7 @@ namespace ns3
     int ns3Priority = NiUtils::GetThreadPrioriy();
     const int rxThreadPriority = ns3Priority - 5;
 
-    if ((m_ns3WifiDevType == NS3_AP) && ((m_niApiWifiDevType == NIAPI_AP)||(m_niApiWifiDevType==NIAPI_WIFI_ALL)))
+    if ((m_ns3WifiDevType == Ns3WifiDevType_t::NS3_AP) && ((m_niApiWifiDevType == NiApiWifiDevType_t::NIAPI_AP)||(m_niApiWifiDevType==NiApiWifiDevType_t::NIAPI_WIFI_ALL)))
       {
         if(m_enableNiApiLoopback)
           {
@@ -357,7 +359,7 @@ namespace ns3
 
       }
     // TODO-NI: remove code duplication -> ports to be set to a local variable depending on the scenario and after this the sockets and callbacks will be setup in one call
-    else if ((m_ns3WifiDevType == NS3_STA)  && ((m_niApiWifiDevType == NIAPI_STA)||(m_niApiWifiDevType==NIAPI_WIFI_ALL)))
+    else if ((m_ns3WifiDevType == Ns3WifiDevType_t::NS3_STA)  && ((m_niApiWifiDevType == NiApiWifiDevType_t::NIAPI_STA)||(m_niApiWifiDevType==NiApiWifiDevType_t::NIAPI_WIFI_ALL)))
       {
         m_wifiNiUdpTransport = CreateObject <NiUdpTransport> ("WIFI");
         // set callback function for rx packets
@@ -382,7 +384,7 @@ namespace ns3
 
         }
       }
-    else if ((m_ns3WifiDevType == NS3_ADHOC)  && (m_niApiWifiDevType == NIAPI_STA1))
+    else if ((m_ns3WifiDevType == Ns3WifiDevType_t::NS3_ADHOC)  && (m_niApiWifiDevType == NiApiWifiDevType_t::NIAPI_STA1))
       {
         m_wifiNiUdpTransport = CreateObject <NiUdpTransport> ("WIFI");
         // set callback function for rx packets
@@ -406,7 +408,7 @@ namespace ns3
 
 			}
       }
-    else if ((m_ns3WifiDevType == NS3_ADHOC)  && (m_niApiWifiDevType == NIAPI_STA2))
+    else if ((m_ns3WifiDevType == Ns3WifiDevType_t::NS3_ADHOC)  && (m_niApiWifiDevType == NiApiWifiDevType_t::NIAPI_STA2))
       {
         m_wifiNiUdpTransport = CreateObject <NiUdpTransport> ("WIFI");
         // set callback function for rx packets
@@ -548,7 +550,8 @@ namespace ns3
     //fill with recipient station or transmitter station MAC address only if toDs AND fromDs == 1
     //if (txConfigReqBody.msduTxParams.fromDs && txConfigReqBody.msduTxParams.toDs)
 
-    txConfigReqBody.msduTxParams.msduLength = (uint16_t) combinedPacket->GetSerializedSize();
+    txConfigReqBody.msduTxParams.msduLength = sizeof(niNs3Key); // reserve length for ns-3 key
+    txConfigReqBody.msduTxParams.msduLength += (uint16_t) combinedPacket->GetSerializedSize();
 
     txConfigReqBody.phyTxParams.msduIndex     = 1;
     txConfigReqBody.phyTxParams.format        = 2;
@@ -572,13 +575,20 @@ namespace ns3
   )
   {
     // extra buffer used for type conversion of MSDU data (packet in U8) into U32 for serialization
-    uint8_t msduDataBuffer[4065];
+    uint8_t msduDataBuffer[NI_WIFI_CONST_MAX_MSDU_SIZE];
+    uint32_t msduDataBufferOffset = 0;
 
     NiapiCommonHeader txPayloadReqHdr;
     TxPayloadReqBody txPayloadReqBody;
 
     // determine MSDU length (here the length of the ns-3 packet in bytes)
-    uint32_t msduLength = combinedPacket->GetSerializedSize();
+    uint32_t ns3PayloadLength = combinedPacket->GetSerializedSize();
+    // add length of NI ns-3 key as prefix
+    uint32_t msduLength = sizeof(niNs3Key) + ns3PayloadLength;
+    // add ns-3 key to payload
+    std::memcpy(msduDataBuffer, niNs3Key, sizeof(niNs3Key));
+    // shift buffer offset to beginning of ns-3 payload
+    msduDataBufferOffset += sizeof(niNs3Key);
 
     // =========== header declaration ===========
 
@@ -604,8 +614,8 @@ namespace ns3
     txPayloadReqBody.msduTxPayload.parSetLength = msduLength + 4;
     txPayloadReqBody.msduTxPayload.msduLength	= msduLength;
 
-    // write content of ns-3 packet into U8 buffer
-    combinedPacket->Serialize(msduDataBuffer, msduLength);
+    // write content of ns-3 packet into U8 buffer, after NI ns-3 key
+    combinedPacket->Serialize(msduDataBuffer + msduDataBufferOffset, ns3PayloadLength);
 
     // convert buffer into U32 to make it work with SerializeMessage
     for (uint32_t i = 0; i<msduLength; i++) txPayloadReqBody.msduTxPayload.msduData [i] = (uint32_t) msduDataBuffer [i];
@@ -619,7 +629,7 @@ namespace ns3
   void
   NiWifiMacInterface::NiStartTxCtrlDataFrame(Ptr<const Packet> packet, WifiMacHeader hdr)
   {
-    if ((m_ns3WifiDevType == NS3_AP) && ((m_niApiWifiDevType == NIAPI_AP)||(m_niApiWifiDevType==NIAPI_WIFI_ALL)))
+    if ((m_ns3WifiDevType == Ns3WifiDevType_t::NS3_AP) && ((m_niApiWifiDevType == NiApiWifiDevType_t::NIAPI_AP)||(m_niApiWifiDevType==NiApiWifiDevType_t::NIAPI_WIFI_ALL)))
       {
         NI_LOG_DEBUG ("AP Tx Start with packet of size = " << packet->GetSerializedSize() << " bytes");
 
@@ -698,7 +708,7 @@ namespace ns3
         // reset buffer
         m_bufferOffsetTx = 0;
       }
-    else if ((m_ns3WifiDevType == NS3_STA)  && ((m_niApiWifiDevType == NIAPI_STA)||(m_niApiWifiDevType==NIAPI_WIFI_ALL)))
+    else if ((m_ns3WifiDevType == Ns3WifiDevType_t::NS3_STA)  && ((m_niApiWifiDevType == NiApiWifiDevType_t::NIAPI_STA)||(m_niApiWifiDevType==NiApiWifiDevType_t::NIAPI_WIFI_ALL)))
       {
         NI_LOG_DEBUG ("STA Tx Start with packet of size = " << packet->GetSerializedSize() << " bytes");
 
@@ -748,7 +758,7 @@ namespace ns3
         // reset buffer
         m_bufferOffsetTx = 0;
       }
-    else if (m_ns3WifiDevType == NS3_ADHOC)
+    else if (m_ns3WifiDevType == Ns3WifiDevType_t::NS3_ADHOC)
       {
 
         NI_LOG_DEBUG("ADHOC Tx Start with packet of size = " << packet->GetSerializedSize() << " bytes");
@@ -762,13 +772,13 @@ namespace ns3
         // Note that the original WifiMacHeader contents are still available in combinedPacket!
         if(!m_enableNiApiLoopback)
           {
-            if (m_niApiWifiDevType == NIAPI_STA1)
+            if (m_niApiWifiDevType == NiApiWifiDevType_t::NIAPI_STA1)
               {
                 hdr.SetAddr1 (Mac48Address(m_niApiWifiSta2MacAddr.c_str()));	//assign destination address
                 hdr.SetAddr2 (Mac48Address(m_niApiWifiSta1MacAddr.c_str()));	//assign source address
                 adhoc_staType = 0; // Set to 0 for station 1
               }
-            else if (m_niApiWifiDevType == NIAPI_STA2)
+            else if (m_niApiWifiDevType == NiApiWifiDevType_t::NIAPI_STA2)
               {
                 hdr.SetAddr1 (Mac48Address(m_niApiWifiSta1MacAddr.c_str()));	//assign destination address
                 hdr.SetAddr2 (Mac48Address(m_niApiWifiSta2MacAddr.c_str()));	//assign source address
@@ -1079,7 +1089,28 @@ namespace ns3
             m_payloadBuffer = m_bufferRx + 24;
             m_msduLength = m_rxPayloadIndBody.msduRxPayload.msduLength;
 
-            m_payloadIndReceived = true;
+            // check if payload has niNs3Key
+            if (std::memcmp(m_payloadBuffer, niNs3Key, sizeof(niNs3Key)) == 0)
+              {
+                NI_LOG_DEBUG("NiWifiMacInterface::NiStartRxCtrlDataFrame: NI ns-3 key found");
+                m_payloadBuffer += sizeof(niNs3Key);
+                m_msduLength -= sizeof(niNs3Key);
+                m_payloadIndReceived = true;
+              }
+            else
+              {
+                NI_LOG_WARN("NI ns-3 key not found, drop payload");
+                NI_LOG_CONSOLE_DEBUG("Received non ns-3 conform payload -> drop");
+
+                m_payloadIndReceived = false;
+                // reset control variables for next packets to be received
+                m_configIndReceived = 0;
+                m_payloadIndReceived = 0;
+                m_msduLength = 0;
+                m_rxConfigIndBody = {};
+                m_rxPayloadIndBody = {};
+              }
+
           }
 
         else NI_LOG_DEBUG("Received RX Payload Indication, but RX Configuration Indication is awaited.\n"
@@ -1131,7 +1162,7 @@ namespace ns3
 
     // reset buffer offset
     m_bufferOffsetRx = 0;
-
+    return true;
   }
 
   void
@@ -1161,5 +1192,6 @@ namespace ns3
 			else
 			NS_FATAL_ERROR ("TX confirmation message TypeID mismatch from AFW");
 		 }
-     }
+	return true;
+  }
 }

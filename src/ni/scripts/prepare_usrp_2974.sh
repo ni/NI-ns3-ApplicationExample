@@ -1,7 +1,6 @@
 #!/bin/bash
 
 LOCAL_GIT_REPO="/home/root/ns-3.26"
-REMOTE_GIT_REPO_INTERNAL="https://dev.azure.com/ni/DevCentral/_git/ELBE-ns3-dev"
 REMOTE_GIT_REPO_EXTERNAL="https://github.com/ni/NI-ns3-ApplicationExample.git"
 REMOTE_GIT_REPO=$REMOTE_GIT_REPO_EXTERNAL
 

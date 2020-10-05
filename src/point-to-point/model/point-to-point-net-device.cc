@@ -28,6 +28,8 @@
 #include "point-to-point-net-device.h"
 #include "point-to-point-channel.h"
 #include "ppp-header.h"
+// NI API CHANGE
+#include "ns3/ni-logging.h"
 
 namespace ns3 {
 
@@ -262,6 +264,10 @@ PointToPointNetDevice::TransmitStart (Ptr<Packet> p)
   // schedule an event that will be executed when the transmission is complete.
   //
   NS_ASSERT_MSG (m_txMachineState == READY, "Must be READY to transmit");
+  
+  // NI API CHANGE, Debug
+  if (!(m_txMachineState == READY)) NI_LOG_CONSOLE_DEBUG("Must be READY to transmit");
+
   m_txMachineState = BUSY;
   m_currentPkt = p;
   m_phyTxBeginTrace (m_currentPkt);
@@ -284,6 +290,11 @@ void
 PointToPointNetDevice::TransmitComplete (void)
 {
   NS_LOG_FUNCTION (this);
+  
+  // NI API CHANGE
+  NI_LOG_NONE(this << " ::TransmitComplete wait");
+  m_sendMutex.lock();
+  NI_LOG_NONE(this << " ::TransmitComplete process");
 
   //
   // This function is called to when we're all done transmitting a packet.
@@ -291,6 +302,11 @@ PointToPointNetDevice::TransmitComplete (void)
   // is empty, we are done, otherwise we need to start transmitting the
   // next packet.
   //
+
+  // NI API CHANGE, Debug
+  if (!(m_txMachineState == BUSY)) NI_LOG_CONSOLE_DEBUG("Must be BUSY if transmitting");
+  if (!(m_currentPkt != 0)) NI_LOG_CONSOLE_DEBUG("PointToPointNetDevice::TransmitComplete(): m_currentPkt zero");
+  
   NS_ASSERT_MSG (m_txMachineState == BUSY, "Must be BUSY if transmitting");
   m_txMachineState = READY;
 
@@ -309,6 +325,10 @@ PointToPointNetDevice::TransmitComplete (void)
   if (item == 0)
     {
       NS_LOG_LOGIC ("No pending packets in device queue after tx complete");
+
+      // NI API CHANGE
+      m_sendMutex.unlock(); // release mutex before callback in txq->Wake is called, to prevent deadlock
+
       if (txq)
       {
         NS_LOG_DEBUG ("The device queue is being woken up (" << m_queue->GetNPackets () <<
@@ -346,6 +366,9 @@ PointToPointNetDevice::TransmitComplete (void)
       // Inform BQL
       txq->NotifyTransmittedBytes (m_currentPkt->GetSize ());
     }
+
+  // NI API CHANGE
+  m_sendMutex.unlock();
 }
 
 bool
@@ -561,6 +584,11 @@ PointToPointNetDevice::Send (
   const Address &dest, 
   uint16_t protocolNumber)
 {
+  // NI API CHANGE
+  NI_LOG_NONE(this << " ::Send wait");
+  m_sendMutex.lock();
+  NI_LOG_NONE(this << " ::Send process");
+
   Ptr<NetDeviceQueue> txq;
   if (m_queueInterface)
   {
@@ -568,6 +596,9 @@ PointToPointNetDevice::Send (
   }
 
   NS_ASSERT_MSG (!txq || !txq->IsStopped (), "Send should not be called when the device is stopped");
+  
+  // NI API CHANGE, Debug
+  if (!(!txq || !txq->IsStopped ())) NI_LOG_CONSOLE_DEBUG("Send should not be called when the device is stopped");
 
   NS_LOG_FUNCTION (this << packet << dest << protocolNumber);
   NS_LOG_LOGIC ("p=" << packet << ", dest=" << &dest);
@@ -580,6 +611,10 @@ PointToPointNetDevice::Send (
   if (IsLinkUp () == false)
     {
       m_macTxDropTrace (packet);
+
+      // NI API CHANGE
+      m_sendMutex.unlock();
+
       return false;
     }
 
@@ -626,9 +661,18 @@ PointToPointNetDevice::Send (
           bool ret = TransmitStart (packet);
           if (txq)
             {
+              // NI API CHANGE
+              NS_ASSERT_MSG (m_currentPkt != 0, "PointToPointNetDevice::TransmitComplete(): m_currentPkt zero");
+              // NI API CHANGE, Debug
+              if (!(m_currentPkt != 0)) NI_LOG_CONSOLE_DEBUG("PointToPointNetDevice::TransmitComplete(): m_currentPkt zero");
+              
               // Inform BQL
               txq->NotifyTransmittedBytes (m_currentPkt->GetSize ());
             }
+
+          // NI API CHANGE
+          m_sendMutex.unlock();
+
           return ret;
         }
       // We have enqueued a packet but we have not dequeued any packet. Thus, we
@@ -646,6 +690,10 @@ PointToPointNetDevice::Send (
               txq->Stop ();
             }
         }
+
+      // NI API CHANGE
+      m_sendMutex.unlock();
+
       return true;
     }
 
@@ -659,6 +707,10 @@ PointToPointNetDevice::Send (
                   " packets and " << m_queue->GetNBytes () << " bytes inside)");
     txq->Stop ();
   }
+
+  // NI API CHANGE
+  m_sendMutex.unlock();
+
   return false;
 }
 
@@ -723,6 +775,10 @@ PointToPointNetDevice::GetRemote (void) const
 {
   NS_LOG_FUNCTION (this);
   NS_ASSERT (m_channel->GetNDevices () == 2);
+
+  // NI API CHANGE, Debug
+  if (!(m_channel->GetNDevices () == 2)) NI_LOG_CONSOLE_DEBUG("!(m_channel->GetNDevices () == 2)");
+
   for (uint32_t i = 0; i < m_channel->GetNDevices (); ++i)
     {
       Ptr<NetDevice> tmp = m_channel->GetDevice (i);

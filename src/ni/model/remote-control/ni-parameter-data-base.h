@@ -34,11 +34,17 @@ private:
     bool parameterLog_PhyTimingInd;
     uint32_t lwaDecisionVariable;
     uint32_t lwipDecisionVariable;
+    uint32_t dcDecisionVariable;
+    bool dcLaunchEnable;
     bool manualLteUeChannelSinrEnable;
     double lteUeChannelSinr;
+    uint32_t gfdmDlScs;
+    uint32_t gfdmUlScs;
 
 
 public:
+  ParameterDataBase ();
+  ~ParameterDataBase ();
 
 	void setParameterInt1(int p1);
 	void setParameterInt1(std::string p1str);
@@ -64,6 +70,16 @@ public:
 	uint32_t getParameterLwaDecVariable();
 	std::string getStringParameterLwaDecVariable();
 
+	void setParameterDcDecVariable(uint32_t p1);
+	std::string setParameterDcDecVariable(std::string p1str);
+	uint32_t getParameterDcDecVariable();
+	std::string getStringParameterDcDecVariable();
+
+	void setParameterDcLaunchEnable(bool enable);
+	std::string setParameterDcLaunchEnable(std::string enableStr);
+	bool getParameterDcLaunchEnable(void);
+	std::string getStringParameterDcLaunchEnable(void);
+
 	void setParameterLwipDecVariable(uint32_t p2);
 	std::string setParameterLwipDecVariable(std::string p2str);
 	uint32_t getParameterLwipDecVariable();
@@ -79,6 +95,15 @@ public:
 	double getParameterLteUeChannelSinr();
 	std::string getStringParameterLteUeChannelSinr();
 
+	void setParameterGfdmDlScs(uint32_t dlScs);
+	std::string setParameterGfdmDlScs(std::string dlScs);
+	uint32_t getParameterGfdmDlScs(void);
+	std::string getStringParameterGfdmDlScs(void);
+
+	void setParameterGfdmUlScs(uint32_t ulScs);
+	std::string setParameterGfdmUlScs(std::string ulScs);
+	uint32_t getParameterGfdmUlScs(void);
+	std::string getStringParameterGfdmUlScs(void);
 };
 
 #endif

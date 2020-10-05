@@ -23,7 +23,7 @@
 #define SRC_NI_MODEL_WIFI_NI_WIFI_CONSTANTS_H_
 
 
-// TODO-NI: add constants for WIFI
+#define NI_WIFI_CONST_MAX_MSDU_SIZE 4065
 
 
 #endif /* SRC_NI_MODEL_WIFI_NI_WIFI_CONSTANTS_H_ */

@@ -45,7 +45,7 @@ public:
   NiUtils ();
   static int GetThreadPrioriy(void);
   static void SetThreadPrioriy(int priority);
-  static void AddThreadInfo (pthread_t threadId, std::string threadName);
+  static void AddThreadInfo (std::string threadName);
   static void PrintThreadInfo(void);
   static std::string GetThreadName (pthread_t threadId);
   static void InstallSignalHandler(void);
